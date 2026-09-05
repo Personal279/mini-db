@@ -29,3 +29,7 @@ int RequestRouter::findNode(const std::string& key) const {
 
     return partition->getActiveNodeId();
 }
+
+int RequestRouter::route(const Request& request) const {
+    return findNode(request.key);
+}

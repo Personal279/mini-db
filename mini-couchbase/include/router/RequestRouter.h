@@ -1,8 +1,7 @@
 #pragma once
 
-#include <string>
-
 #include "cluster/ClusterMetadata.h"
+#include "common/Types.h"
 
 class RequestRouter {
 public:
@@ -10,6 +9,8 @@ public:
 
     int findPartition(const std::string& key) const;
     int findNode(const std::string& key) const;
+
+    int route(const Request& request) const;
 
 private:
     const ClusterMetadata& metadata;
