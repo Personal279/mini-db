@@ -6,14 +6,14 @@
 class RequestServer {
 public:
     RequestServer(
-        const PartitionManager& partitionManager,
+        PartitionManager& partitionManager,
         int partitionCount
     );
 
     void handleRequest(const Request& request);
 
 private:
-    const PartitionManager& partitionManager;
+    PartitionManager& partitionManager;
     int partitionCount;
 
     int findPartition(const std::string& key) const;
