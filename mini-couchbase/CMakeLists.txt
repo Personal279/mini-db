@@ -10,15 +10,16 @@ add_executable(mini_couchbase
     src/main.cpp
 
     src/client/Client.cpp
-
+    
     src/router/RequestRouter.cpp
-
+    
     src/cluster/Node.cpp
     src/cluster/Partition.cpp
     src/cluster/ClusterMetadata.cpp
-
+    
     src/node/RequestServer.cpp
     src/node/PartitionManager.cpp
-
+    
+    src/storage/WAL.cpp
     src/storage/StorageEngine.cpp
 )
