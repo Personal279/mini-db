@@ -1,29 +1,33 @@
 #include "node/RequestServer.h"
 
+#include <functional>
 #include <iostream>
 
+RequestServer::RequestServer(
+    const PartitionManager& partitionManager,
+    int partitionCount
+)
+    : partitionManager(partitionManager),
+      partitionCount(partitionCount) {
+}
+
+int RequestServer::findPartition(const std::string& key) const {
+    std::size_t hashValue = std::hash<std::string>{}(key);
+
+    return static_cast<int>(hashValue % partitionCount);
+}
+
 void RequestServer::handleRequest(const Request& request) {
-    std::cout << "Request received: ";
+    int partitionId = findPartition(request.key);
 
-    switch (request.operation) {
-        case Operation::GET:
-            std::cout << "GET";
-            break;
-
-        case Operation::PUT:
-            std::cout << "PUT";
-            break;
-
-        case Operation::DELETE:
-            std::cout << "DELETE";
-            break;
+    if (!partitionManager.ownsPartition(partitionId)) {
+        std::cout << "This node does not own partition "
+                  << partitionId << std::endl;
+        return;
     }
 
-    std::cout << " | Key: " << request.key;
+    std::cout << "Request accepted for partition "
+              << partitionId << std::endl;
 
-    if (request.operation == Operation::PUT) {
-        std::cout << " | Value: " << request.value;
-    }
-
-    std::cout << std::endl;
+    std::cout << "Key: " << request.key << std::endl;
 }
