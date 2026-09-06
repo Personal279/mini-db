@@ -2,9 +2,12 @@
 
 #include <string>
 #include <unordered_map>
+#include <cstddef>
 
 class MemTable {
 public:
+    MemTable(std::size_t maxEntries);
+
     void put(
         const std::string& key,
         const std::string& value
@@ -18,6 +21,12 @@ public:
         const std::string& key
     );
 
+    std::size_t size() const;
+
+    bool isFull() const;
+
 private:
     std::unordered_map<std::string, std::string> data;
+
+    std::size_t maxEntries;
 };

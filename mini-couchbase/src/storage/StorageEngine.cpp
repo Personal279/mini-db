@@ -1,9 +1,14 @@
 #include "storage/StorageEngine.h"
 
+#include <vector>
+
+
 StorageEngine::StorageEngine(
-    const std::string& walPath
+    const std::string& walPath,
+    std::size_t memTableMaxEntries
 )
-    : wal(walPath) {
+    : wal(walPath),
+      memTable(memTableMaxEntries) {
 
     std::vector<Request> requests = wal.recover();
 
@@ -39,10 +44,8 @@ void StorageEngine::put(
         value
     };
 
-    // Write to WAL first
     wal.append(request);
 
-    // Then update MemTable
     memTable.put(key, value);
 }
 

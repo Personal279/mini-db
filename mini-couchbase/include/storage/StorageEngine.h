@@ -1,13 +1,17 @@
 #pragma once
 
 #include <string>
+#include <cstddef>
 
 #include "storage/WAL.h"
 #include "storage/MemTable.h"
 
 class StorageEngine {
 public:
-    StorageEngine(const std::string& walPath);
+    StorageEngine(
+        const std::string& walPath,
+        std::size_t memTableMaxEntries
+    );
 
     void put(
         const std::string& key,

@@ -1,6 +1,11 @@
 #include "storage/MemTable.h"
 
 
+MemTable::MemTable(std::size_t maxEntries)
+    : maxEntries(maxEntries) {
+}
+
+
 void MemTable::put(
     const std::string& key,
     const std::string& value
@@ -26,4 +31,14 @@ void MemTable::remove(
     const std::string& key
 ) {
     data.erase(key);
+}
+
+
+std::size_t MemTable::size() const {
+    return data.size();
+}
+
+
+bool MemTable::isFull() const {
+    return data.size() >= maxEntries;
 }
