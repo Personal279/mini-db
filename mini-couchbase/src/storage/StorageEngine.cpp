@@ -12,11 +12,14 @@ StorageEngine::StorageEngine(
         switch (request.operation) {
 
             case Operation::PUT:
-                data[request.key] = request.value;
+                memTable.put(
+                    request.key,
+                    request.value
+                );
                 break;
 
             case Operation::DELETE:
-                data.erase(request.key);
+                memTable.remove(request.key);
                 break;
 
             case Operation::GET:
@@ -36,22 +39,18 @@ void StorageEngine::put(
         value
     };
 
+    // Write to WAL first
     wal.append(request);
 
-    data[key] = value;
+    // Then update MemTable
+    memTable.put(key, value);
 }
 
 
 std::string StorageEngine::get(
     const std::string& key
 ) const {
-    auto it = data.find(key);
-
-    if (it == data.end()) {
-        return "";
-    }
-
-    return it->second;
+    return memTable.get(key);
 }
 
 
@@ -66,5 +65,5 @@ void StorageEngine::remove(
 
     wal.append(request);
 
-    data.erase(key);
+    memTable.remove(key);
 }

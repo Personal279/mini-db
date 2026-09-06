@@ -1,10 +1,9 @@
 #pragma once
 
 #include <string>
-#include <unordered_map>
 
-#include "common/Types.h"
 #include "storage/WAL.h"
+#include "storage/MemTable.h"
 
 class StorageEngine {
 public:
@@ -15,12 +14,15 @@ public:
         const std::string& value
     );
 
-    std::string get(const std::string& key) const;
+    std::string get(
+        const std::string& key
+    ) const;
 
-    void remove(const std::string& key);
+    void remove(
+        const std::string& key
+    );
 
 private:
-    std::unordered_map<std::string, std::string> data;
-
     WAL wal;
+    MemTable memTable;
 };
