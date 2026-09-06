@@ -10,4 +10,9 @@ public:
         const MemTable& memTable,
         const std::string& filePath
     );
+
+    static std::string read(
+        const std::string& key,
+        const std::string& filePath
+    );
 };

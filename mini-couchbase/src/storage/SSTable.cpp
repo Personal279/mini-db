@@ -41,3 +41,38 @@ bool SSTable::write(
 
     return true;
 }
+
+std::string SSTable::read(
+    const std::string& key,
+    const std::string& filePath
+) {
+    std::ifstream file(filePath);
+
+    if (!file.is_open()) {
+        return "";
+    }
+
+    std::string line;
+
+    while (std::getline(file, line)) {
+
+        std::size_t separator =
+            line.find('|');
+
+        if (separator == std::string::npos) {
+            continue;
+        }
+
+        std::string storedKey =
+            line.substr(0, separator);
+
+        std::string storedValue =
+            line.substr(separator + 1);
+
+        if (storedKey == key) {
+            return storedValue;
+        }
+    }
+
+    return "";
+}

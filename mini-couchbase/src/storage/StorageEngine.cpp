@@ -13,7 +13,6 @@ StorageEngine::StorageEngine(
           std::make_unique<MemTable>(memTableMaxEntries)
       ) {
 
-    // Recover previous operations from WAL
     std::vector<Request> requests = wal.recover();
 
     for (const Request& request : requests) {
@@ -55,6 +54,32 @@ void StorageEngine::rotateMemTable() {
     flushImmutableMemTable();
 }
 
+
+void StorageEngine::flushImmutableMemTable() {
+
+    if (!immutableMemTable) {
+        return;
+    }
+
+    std::string filePath =
+        "sstable_" +
+        std::to_string(sstableCounter++) +
+        ".db";
+
+    bool success = SSTable::write(
+        *immutableMemTable,
+        filePath
+    );
+
+    if (success) {
+
+        sstableFiles.push_back(filePath);
+
+        immutableMemTable.reset();
+    }
+}
+
+
 void StorageEngine::put(
     const std::string& key,
     const std::string& value
@@ -79,19 +104,40 @@ std::string StorageEngine::get(
     const std::string& key
 ) const {
 
-    // Check active MemTable first
-    std::string value = activeMemTable->get(key);
+    std::string value =
+        activeMemTable->get(key);
 
     if (!value.empty()) {
         return value;
     }
 
-    // Then check immutable MemTable
     if (immutableMemTable) {
-        value = immutableMemTable->get(key);
+
+        value =
+            immutableMemTable->get(key);
+
+        if (!value.empty()) {
+            return value;
+        }
     }
 
-    return value;
+    for (
+        auto it = sstableFiles.rbegin();
+        it != sstableFiles.rend();
+        ++it
+    ) {
+
+        value = SSTable::read(
+            key,
+            *it
+        );
+
+        if (!value.empty()) {
+            return value;
+        }
+    }
+
+    return "";
 }
 
 
@@ -104,36 +150,11 @@ void StorageEngine::remove(
         ""
     };
 
-    // Write to WAL first
     wal.append(request);
 
-    // Remove from active MemTable
     activeMemTable->remove(key);
 
-    // Also remove from immutable MemTable if it exists
     if (immutableMemTable) {
         immutableMemTable->remove(key);
-    }
-}
-
-
-void StorageEngine::flushImmutableMemTable() {
-
-    if (!immutableMemTable) {
-        return;
-    }
-
-    std::string filePath =
-        "sstable_" +
-        std::to_string(sstableCounter++) +
-        ".db";
-
-    bool success = SSTable::write(
-        *immutableMemTable,
-        filePath
-    );
-
-    if (success) {
-        immutableMemTable.reset();
     }
 }

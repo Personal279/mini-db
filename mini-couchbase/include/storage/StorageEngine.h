@@ -3,10 +3,12 @@
 #include <string>
 #include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "storage/WAL.h"
 #include "storage/MemTable.h"
 #include "storage/SSTable.h"
+
 
 class StorageEngine {
 public:
@@ -36,6 +38,8 @@ private:
     std::unique_ptr<MemTable> activeMemTable;
 
     std::unique_ptr<MemTable> immutableMemTable;
+
+    std::vector<std::string> sstableFiles;
 
     std::size_t sstableCounter = 0;
 
