@@ -8,8 +8,12 @@ StorageEngine::StorageEngine(
     std::size_t memTableMaxEntries
 )
     : wal(walPath),
-      memTable(memTableMaxEntries) {
+      memTableMaxEntries(memTableMaxEntries),
+      activeMemTable(
+          std::make_unique<MemTable>(memTableMaxEntries)
+      ) {
 
+    // Recover previous operations from WAL
     std::vector<Request> requests = wal.recover();
 
     for (const Request& request : requests) {
@@ -17,20 +21,38 @@ StorageEngine::StorageEngine(
         switch (request.operation) {
 
             case Operation::PUT:
-                memTable.put(
+                activeMemTable->put(
                     request.key,
                     request.value
                 );
+
+                if (activeMemTable->isFull()) {
+                    rotateMemTable();
+                }
+
                 break;
 
             case Operation::DELETE:
-                memTable.remove(request.key);
+                activeMemTable->remove(request.key);
                 break;
 
             case Operation::GET:
                 break;
         }
     }
+}
+
+
+void StorageEngine::rotateMemTable() {
+
+    // Current active MemTable becomes immutable
+    immutableMemTable = std::move(activeMemTable);
+
+    // Create a fresh MemTable for new writes
+    activeMemTable =
+        std::make_unique<MemTable>(
+            memTableMaxEntries
+        );
 }
 
 
@@ -44,16 +66,36 @@ void StorageEngine::put(
         value
     };
 
+    // Write to WAL first
     wal.append(request);
 
-    memTable.put(key, value);
+    // Write to active MemTable
+    activeMemTable->put(key, value);
+
+    // Rotate if full
+    if (activeMemTable->isFull()) {
+        rotateMemTable();
+    }
 }
 
 
 std::string StorageEngine::get(
     const std::string& key
 ) const {
-    return memTable.get(key);
+
+    // Check active MemTable first
+    std::string value = activeMemTable->get(key);
+
+    if (!value.empty()) {
+        return value;
+    }
+
+    // Then check immutable MemTable
+    if (immutableMemTable) {
+        value = immutableMemTable->get(key);
+    }
+
+    return value;
 }
 
 
@@ -66,7 +108,14 @@ void StorageEngine::remove(
         ""
     };
 
+    // Write to WAL first
     wal.append(request);
 
-    memTable.remove(key);
+    // Remove from active MemTable
+    activeMemTable->remove(key);
+
+    // Also remove from immutable MemTable if it exists
+    if (immutableMemTable) {
+        immutableMemTable->remove(key);
+    }
 }

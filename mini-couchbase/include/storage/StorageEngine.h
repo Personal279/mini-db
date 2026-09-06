@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cstddef>
+#include <memory>
 
 #include "storage/WAL.h"
 #include "storage/MemTable.h"
@@ -28,5 +29,14 @@ public:
 
 private:
     WAL wal;
-    MemTable memTable;
+
+    std::size_t memTableMaxEntries;
+
+    // Active MemTable receives new writes
+    std::unique_ptr<MemTable> activeMemTable;
+
+    // Full MemTable waiting for SSTable flush
+    std::unique_ptr<MemTable> immutableMemTable;
+
+    void rotateMemTable();
 };
