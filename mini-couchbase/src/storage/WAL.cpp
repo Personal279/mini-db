@@ -1,6 +1,7 @@
 #include "storage/WAL.h"
 
 #include <fstream>
+#include <sstream>
 
 WAL::WAL(const std::string& filePath)
     : filePath(filePath) {
@@ -27,7 +28,6 @@ void WAL::append(const Request& request) {
             break;
 
         case Operation::GET:
-            // GET is not written to WAL
             break;
 
         case Operation::DELETE:
@@ -36,6 +36,53 @@ void WAL::append(const Request& request) {
                  << "\n";
             break;
     }
+}
 
-    file.close();
+
+std::vector<Request> WAL::recover() {
+    std::vector<Request> requests;
+
+    std::ifstream file(filePath);
+
+    if (!file.is_open()) {
+        return requests;
+    }
+
+    std::string line;
+
+    while (std::getline(file, line)) {
+
+        std::stringstream stream(line);
+
+        std::string operation;
+        std::string key;
+        std::string value;
+
+        std::getline(stream, operation, '|');
+        std::getline(stream, key, '|');
+        std::getline(stream, value);
+
+        if (operation == "PUT") {
+
+            requests.push_back(
+                Request{
+                    Operation::PUT,
+                    key,
+                    value
+                }
+            );
+        }
+        else if (operation == "DELETE") {
+
+            requests.push_back(
+                Request{
+                    Operation::DELETE,
+                    key,
+                    ""
+                }
+            );
+        }
+    }
+
+    return requests;
 }
