@@ -6,6 +6,7 @@
 
 #include "storage/WAL.h"
 #include "storage/MemTable.h"
+#include "storage/SSTable.h"
 
 class StorageEngine {
 public:
@@ -32,11 +33,13 @@ private:
 
     std::size_t memTableMaxEntries;
 
-    // Active MemTable receives new writes
     std::unique_ptr<MemTable> activeMemTable;
 
-    // Full MemTable waiting for SSTable flush
     std::unique_ptr<MemTable> immutableMemTable;
 
+    std::size_t sstableCounter = 0;
+
     void rotateMemTable();
+
+    void flushImmutableMemTable();
 };

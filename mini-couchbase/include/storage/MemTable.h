@@ -25,8 +25,10 @@ public:
 
     bool isFull() const;
 
+    const std::unordered_map<std::string, std::string>&
+    getData() const;
+
 private:
     std::unordered_map<std::string, std::string> data;
-
     std::size_t maxEntries;
 };

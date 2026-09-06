@@ -45,16 +45,15 @@ StorageEngine::StorageEngine(
 
 void StorageEngine::rotateMemTable() {
 
-    // Current active MemTable becomes immutable
     immutableMemTable = std::move(activeMemTable);
 
-    // Create a fresh MemTable for new writes
     activeMemTable =
         std::make_unique<MemTable>(
             memTableMaxEntries
         );
-}
 
+    flushImmutableMemTable();
+}
 
 void StorageEngine::put(
     const std::string& key,
@@ -66,13 +65,10 @@ void StorageEngine::put(
         value
     };
 
-    // Write to WAL first
     wal.append(request);
 
-    // Write to active MemTable
     activeMemTable->put(key, value);
 
-    // Rotate if full
     if (activeMemTable->isFull()) {
         rotateMemTable();
     }
@@ -117,5 +113,27 @@ void StorageEngine::remove(
     // Also remove from immutable MemTable if it exists
     if (immutableMemTable) {
         immutableMemTable->remove(key);
+    }
+}
+
+
+void StorageEngine::flushImmutableMemTable() {
+
+    if (!immutableMemTable) {
+        return;
+    }
+
+    std::string filePath =
+        "sstable_" +
+        std::to_string(sstableCounter++) +
+        ".db";
+
+    bool success = SSTable::write(
+        *immutableMemTable,
+        filePath
+    );
+
+    if (success) {
+        immutableMemTable.reset();
     }
 }

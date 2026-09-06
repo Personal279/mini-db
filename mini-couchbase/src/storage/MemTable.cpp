@@ -42,3 +42,8 @@ std::size_t MemTable::size() const {
 bool MemTable::isFull() const {
     return data.size() >= maxEntries;
 }
+
+const std::unordered_map<std::string, std::string>&
+MemTable::getData() const {
+    return data;
+}
