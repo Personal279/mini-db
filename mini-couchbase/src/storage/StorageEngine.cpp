@@ -32,7 +32,14 @@ StorageEngine::StorageEngine(
                 break;
 
             case Operation::DELETE:
-                activeMemTable->remove(request.key);
+                activeMemTable->remove(
+                    request.key
+                );
+
+                if (activeMemTable->isFull()) {
+                    rotateMemTable();
+                }
+
                 break;
 
             case Operation::GET:
@@ -92,7 +99,10 @@ void StorageEngine::put(
 
     wal.append(request);
 
-    activeMemTable->put(key, value);
+    activeMemTable->put(
+        key,
+        value
+    );
 
     if (activeMemTable->isFull()) {
         rotateMemTable();
@@ -107,6 +117,10 @@ std::string StorageEngine::get(
     std::string value =
         activeMemTable->get(key);
 
+    if (value == MemTable::TOMBSTONE) {
+        return "";
+    }
+
     if (!value.empty()) {
         return value;
     }
@@ -115,6 +129,10 @@ std::string StorageEngine::get(
 
         value =
             immutableMemTable->get(key);
+
+        if (value == MemTable::TOMBSTONE) {
+            return "";
+        }
 
         if (!value.empty()) {
             return value;
@@ -131,6 +149,10 @@ std::string StorageEngine::get(
             key,
             *it
         );
+
+        if (value == MemTable::TOMBSTONE) {
+            return "";
+        }
 
         if (!value.empty()) {
             return value;
@@ -152,9 +174,11 @@ void StorageEngine::remove(
 
     wal.append(request);
 
-    activeMemTable->remove(key);
+    activeMemTable->remove(
+        key
+    );
 
-    if (immutableMemTable) {
-        immutableMemTable->remove(key);
+    if (activeMemTable->isFull()) {
+        rotateMemTable();
     }
 }

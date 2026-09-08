@@ -11,18 +11,9 @@
 
 int main() {
 
-    // =========================
-    // 1. Create cluster nodes
-    // =========================
-
     Node nodeA(0, "127.0.0.1:9001");
     Node nodeB(1, "127.0.0.1:9002");
     Node nodeC(2, "127.0.0.1:9003");
-
-
-    // =========================
-    // 2. Create cluster metadata
-    // =========================
 
     ClusterMetadata metadata;
 
@@ -30,45 +21,22 @@ int main() {
     metadata.addNode(nodeB);
     metadata.addNode(nodeC);
 
-
-    // =========================
-    // 3. Assign partitions
-    // =========================
-
     metadata.addPartition(Partition(0, 0));
     metadata.addPartition(Partition(1, 1));
     metadata.addPartition(Partition(2, 2));
     metadata.addPartition(Partition(3, 0));
 
-
-    // =========================
-    // 4. Create router
-    // =========================
-
     const int partitionCount = 4;
 
     RequestRouter router(metadata, partitionCount);
 
-
-    // =========================
-    // 5. Create storage engines
-    // =========================
-
-    StorageEngine storageA;
-    StorageEngine storageB;
-    StorageEngine storageC;
-
-
-    // =========================
-    // 6. Create PartitionManagers
-    // =========================
+    StorageEngine storageA("wal_node_A.log", 3);
+    StorageEngine storageB("wal_node_B.log", 3);
+    StorageEngine storageC("wal_node_C.log", 3);
 
     PartitionManager partitionManagerA(storageA);
     PartitionManager partitionManagerB(storageB);
     PartitionManager partitionManagerC(storageC);
-
-
-    // Tell each node which partitions it owns
 
     partitionManagerA.addPartition(0);
     partitionManagerA.addPartition(3);
@@ -76,11 +44,6 @@ int main() {
     partitionManagerB.addPartition(1);
 
     partitionManagerC.addPartition(2);
-
-
-    // =========================
-    // 7. Create RequestServers
-    // =========================
 
     RequestServer serverA(
         partitionManagerA,
@@ -97,17 +60,7 @@ int main() {
         partitionCount
     );
 
-
-    // =========================
-    // 8. Create Client
-    // =========================
-
     Client client;
-
-
-    // =========================
-    // 9. Create PUT request
-    // =========================
 
     Request request =
         client.createPutRequest(
@@ -115,22 +68,12 @@ int main() {
             "Harsha"
         );
 
-
-    // =========================
-    // 10. Router finds node
-    // =========================
-
     int nodeId = router.route(request);
 
     std::cout
         << "Router selected Node "
         << nodeId
         << std::endl;
-
-
-    // =========================
-    // 11. Send request to node
-    // =========================
 
     if (nodeId == 0) {
         serverA.handleRequest(request);
@@ -142,6 +85,26 @@ int main() {
         serverC.handleRequest(request);
     }
 
+    std::cout << "\n--- Testing SSTable Pipeline ---\n";
+
+    storageA.put("test:1", "Harsh");
+    storageA.put("test:2", "John");
+    storageA.put("test:3", "Alice");
+
+    std::cout
+        << "test:1 = "
+        << storageA.get("test:1")
+        << std::endl;
+
+    std::cout
+        << "test:2 = "
+        << storageA.get("test:2")
+        << std::endl;
+
+    std::cout
+        << "test:3 = "
+        << storageA.get("test:3")
+        << std::endl;
 
     return 0;
 }

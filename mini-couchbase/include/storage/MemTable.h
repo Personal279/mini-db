@@ -28,6 +28,8 @@ public:
     const std::unordered_map<std::string, std::string>&
     getData() const;
 
+    static const std::string TOMBSTONE;
+
 private:
     std::unordered_map<std::string, std::string> data;
     std::size_t maxEntries;

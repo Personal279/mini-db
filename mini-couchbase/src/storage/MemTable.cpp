@@ -1,7 +1,12 @@
 #include "storage/MemTable.h"
 
+const std::string MemTable::TOMBSTONE =
+    "__MDDB_TOMBSTONE__";
 
-MemTable::MemTable(std::size_t maxEntries)
+
+MemTable::MemTable(
+    std::size_t maxEntries
+)
     : maxEntries(maxEntries) {
 }
 
@@ -30,7 +35,7 @@ std::string MemTable::get(
 void MemTable::remove(
     const std::string& key
 ) {
-    data.erase(key);
+    data[key] = TOMBSTONE;
 }
 
 
@@ -42,6 +47,7 @@ std::size_t MemTable::size() const {
 bool MemTable::isFull() const {
     return data.size() >= maxEntries;
 }
+
 
 const std::unordered_map<std::string, std::string>&
 MemTable::getData() const {
