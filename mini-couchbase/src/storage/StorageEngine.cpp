@@ -516,37 +516,6 @@ std::string StorageEngine::get(
         snapshot = sstableFiles;
     }
 
-
-//    for (
-//        auto it = snapshot.rbegin();
-//        it != snapshot.rend();
-//        ++it
-//    ) {
-//
-//        value =
-//            SSTable::readWithIndex(
-//                key,
-//                (*it)->filePath,
-//                (*it)->index
-//            );
-//
-//
-//        if (
-//            value ==
-//            MemTable::TOMBSTONE
-//        ) {
-//
-//            return "";
-//        }
-//
-//
-//        if (!value.empty()) {
-//
-//            return value;
-//        }
-//    }
-
-
     for (
     auto it = snapshot.rbegin();
     it != snapshot.rend();

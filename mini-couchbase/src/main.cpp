@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "cli/CLI.h"
+#include "api/HttpServer.h"
 
 #include "client/Client.h"
 
@@ -63,10 +63,6 @@ int main() {
 
     // =========================
     // STORAGE ENGINES
-    // =========================
-    //
-    // Each simulated node gets its
-    // own WAL and SSTable directory.
     // =========================
 
     StorageEngine storageA(
@@ -141,18 +137,26 @@ int main() {
 
 
     // =========================
-    // START CLI
+    // START HTTP API SERVER
     // =========================
 
-    CLI cli(
-        client,
-        router,
-        serverA,
-        serverB,
-        serverC
-    );
+    std::cout << "=============================" << std::endl;
+    std::cout << "       MDDB SERVER" << std::endl;
+    std::cout << "=============================" << std::endl;
 
-    cli.run();
+    std::cout << "HTTP API running on:" << std::endl;
+    std::cout << "http://localhost:8080" << std::endl;
+
+
+    // For Version 1 UI, connect the API
+    // directly to storageA.
+    //
+    // Later, when real networked nodes are added,
+    // the API can route requests through the cluster.
+
+    HttpServer httpServer(storageA);
+
+    httpServer.start();
 
 
     return 0;

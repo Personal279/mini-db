@@ -9,6 +9,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(include)
 
 
+# =========================
+# FIND CROW
+# =========================
+
+find_package(Crow CONFIG REQUIRED)
+
+
+# =========================
+# MAIN DATABASE APPLICATION
+# =========================
+
 add_executable(mini_couchbase
 
     src/main.cpp
@@ -31,8 +42,25 @@ add_executable(mini_couchbase
     src/storage/BloomFilter.cpp
 
     src/cli/CLI.cpp
+
+    src/api/HttpServer.cpp
 )
 
+
+# =========================
+# LINK CROW
+# =========================
+
+target_link_libraries(
+    mini_couchbase
+    PRIVATE
+    Crow::Crow
+)
+
+
+# =========================
+# BENCHMARK
+# =========================
 
 add_executable(mddb_benchmark
 
@@ -43,5 +71,4 @@ add_executable(mddb_benchmark
     src/storage/StorageEngine.cpp
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
-
 )

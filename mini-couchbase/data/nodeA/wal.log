@@ -1,0 +1,3 @@
+PUT|user:1|Harsha
+PUT|user:2|Viat
+DELETE|user:2
