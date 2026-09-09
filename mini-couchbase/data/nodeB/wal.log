@@ -1,0 +1,10 @@
+PUT|user:3|Alice
+DELETE|user:3
+PUT|product:1|Laptop
+PUT|product:5|Headphones
+PUT|account:100|Harsha
+PUT|account:104|Charlie
+PUT|account:100|HarshaV2
+PUT|order:4|Delivered
+PUT|order:8|Shipped
+DELETE|order:8

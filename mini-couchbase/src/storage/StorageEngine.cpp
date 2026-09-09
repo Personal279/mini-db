@@ -13,7 +13,9 @@ void StorageEngine::discoverSSTables() {
 
     for (
         const auto& entry :
-        std::filesystem::directory_iterator(".")
+        std::filesystem::directory_iterator(
+            dataDirectory
+        )
     ) {
 
         if (!entry.is_regular_file()) {
@@ -103,15 +105,22 @@ void StorageEngine::discoverSSTables() {
 
 StorageEngine::StorageEngine(
     const std::string& walPath,
+    const std::string& dataDirectory,
     std::size_t memTableMaxEntries
 )
     : wal(walPath),
+      dataDirectory(dataDirectory),
       memTableMaxEntries(memTableMaxEntries),
       activeMemTable(
           std::make_unique<MemTable>(
               memTableMaxEntries
           )
       ) {
+
+    // Create directory if it does not exist
+    std::filesystem::create_directories(
+        dataDirectory
+    );
 
     discoverSSTables();
 
@@ -123,6 +132,7 @@ StorageEngine::StorageEngine(
         switch (request.operation) {
 
             case Operation::PUT:
+
                 activeMemTable->put(
                     request.key,
                     request.value
@@ -134,7 +144,9 @@ StorageEngine::StorageEngine(
 
                 break;
 
+
             case Operation::DELETE:
+
                 activeMemTable->remove(
                     request.key
                 );
@@ -144,6 +156,7 @@ StorageEngine::StorageEngine(
                 }
 
                 break;
+
 
             case Operation::GET:
                 break;
@@ -173,7 +186,8 @@ void StorageEngine::flushImmutableMemTable() {
     }
 
     std::string filePath =
-        "sstable_" +
+        dataDirectory +
+        "/sstable_" +
         std::to_string(sstableCounter++) +
         ".db";
 
@@ -197,6 +211,7 @@ void StorageEngine::put(
     const std::string& key,
     const std::string& value
 ) {
+
     Request request{
         Operation::PUT,
         key,
@@ -231,6 +246,7 @@ std::string StorageEngine::get(
         return value;
     }
 
+
     if (immutableMemTable) {
 
         value =
@@ -244,6 +260,7 @@ std::string StorageEngine::get(
             return value;
         }
     }
+
 
     for (
         auto it = sstableFiles.rbegin();
@@ -272,6 +289,7 @@ std::string StorageEngine::get(
 void StorageEngine::remove(
     const std::string& key
 ) {
+
     Request request{
         Operation::DELETE,
         key,

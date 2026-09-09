@@ -25,4 +25,6 @@ add_executable(mini_couchbase
     src/storage/WAL.cpp
     src/storage/StorageEngine.cpp
     src/storage/SSTable.cpp
+
+    src/cli/CLI.cpp
 )

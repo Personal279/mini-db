@@ -12,8 +12,10 @@
 
 class StorageEngine {
 public:
+
     StorageEngine(
         const std::string& walPath,
+        const std::string& dataDirectory,
         std::size_t memTableMaxEntries
     );
 
@@ -31,7 +33,10 @@ public:
     );
 
 private:
+
     WAL wal;
+
+    std::string dataDirectory;
 
     std::size_t memTableMaxEntries;
 
