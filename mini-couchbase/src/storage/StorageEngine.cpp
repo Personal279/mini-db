@@ -517,35 +517,72 @@ std::string StorageEngine::get(
     }
 
 
+//    for (
+//        auto it = snapshot.rbegin();
+//        it != snapshot.rend();
+//        ++it
+//    ) {
+//
+//        value =
+//            SSTable::readWithIndex(
+//                key,
+//                (*it)->filePath,
+//                (*it)->index
+//            );
+//
+//
+//        if (
+//            value ==
+//            MemTable::TOMBSTONE
+//        ) {
+//
+//            return "";
+//        }
+//
+//
+//        if (!value.empty()) {
+//
+//            return value;
+//        }
+//    }
+
+
     for (
-        auto it = snapshot.rbegin();
-        it != snapshot.rend();
-        ++it
+    auto it = snapshot.rbegin();
+    it != snapshot.rend();
+    ++it
+) {
+
+    // Bloom Filter says the key definitely
+    // does not exist in this SSTable.
+    if (
+        !(*it)->bloomFilter.possiblyContains(key)
     ) {
-
-        value =
-            SSTable::readWithIndex(
-                key,
-                (*it)->filePath,
-                (*it)->index
-            );
-
-
-        if (
-            value ==
-            MemTable::TOMBSTONE
-        ) {
-
-            return "";
-        }
-
-
-        if (!value.empty()) {
-
-            return value;
-        }
+        continue;
     }
 
+    // Key may exist, so check the index
+    // and directly seek to its position.
+    value =
+        SSTable::readWithIndex(
+            key,
+            (*it)->filePath,
+            (*it)->index
+        );
+
+    if (
+        value ==
+        MemTable::TOMBSTONE
+    ) {
+
+        return "";
+    }
+
+    if (!value.empty()) {
+
+        return value;
+    }
+}
 
     return "";
 }

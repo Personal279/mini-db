@@ -1,8 +1,8 @@
 #include "storage/SSTable.h"
 
+#include <algorithm>
 #include <fstream>
 #include <vector>
-#include <algorithm>
 
 
 bool SSTable::write(
@@ -107,6 +107,53 @@ SSTable::Index SSTable::buildIndex(
 }
 
 
+BloomFilter SSTable::buildBloomFilter(
+    const std::string& filePath,
+    std::size_t filterSize
+) {
+
+    BloomFilter bloomFilter(
+        filterSize
+    );
+
+    std::ifstream file(
+        filePath,
+        std::ios::binary
+    );
+
+    if (!file.is_open()) {
+        return bloomFilter;
+    }
+
+    std::string line;
+
+    while (
+        std::getline(file, line)
+    ) {
+
+        std::size_t separator =
+            line.find('|');
+
+        if (
+            separator ==
+            std::string::npos
+        ) {
+            continue;
+        }
+
+        std::string key =
+            line.substr(
+                0,
+                separator
+            );
+
+        bloomFilter.add(key);
+    }
+
+    return bloomFilter;
+}
+
+
 std::string SSTable::readWithIndex(
     const std::string& key,
     const std::string& filePath,
@@ -160,7 +207,10 @@ std::string SSTable::read(
     const std::string& filePath
 ) {
 
-    std::ifstream file(filePath);
+    std::ifstream file(
+        filePath,
+        std::ios::binary
+    );
 
     if (!file.is_open()) {
         return "";

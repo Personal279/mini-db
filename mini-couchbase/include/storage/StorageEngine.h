@@ -13,6 +13,7 @@
 #include "storage/WAL.h"
 #include "storage/MemTable.h"
 #include "storage/SSTable.h"
+#include "storage/BloomFilter.h"
 
 
 struct SSTableFile {
@@ -22,13 +23,25 @@ struct SSTableFile {
     )
         : filePath(path),
           index(
-              SSTable::buildIndex(path)
+              SSTable::buildIndex(
+                  path
+              )
+          ),
+          bloomFilter(
+              SSTable::buildBloomFilter(
+                  path
+              )
           ) {
     }
 
+
     std::string filePath;
 
+
     SSTable::Index index;
+
+
+    BloomFilter bloomFilter;
 };
 
 
@@ -41,6 +54,7 @@ public:
         const std::string& dataDirectory,
         std::size_t memTableMaxEntries
     );
+
 
     ~StorageEngine();
 
