@@ -28,11 +28,25 @@ int main() {
 
     const int partitionCount = 4;
 
-    RequestRouter router(metadata, partitionCount);
+    RequestRouter router(
+        metadata,
+        partitionCount
+    );
 
-    StorageEngine storageA("wal_node_A.log", 3);
-    StorageEngine storageB("wal_node_B.log", 3);
-    StorageEngine storageC("wal_node_C.log", 3);
+    StorageEngine storageA(
+        "wal_node_A.log",
+        3
+    );
+
+    StorageEngine storageB(
+        "wal_node_B.log",
+        3
+    );
+
+    StorageEngine storageC(
+        "wal_node_C.log",
+        3
+    );
 
     PartitionManager partitionManagerA(storageA);
     PartitionManager partitionManagerB(storageB);
@@ -85,26 +99,59 @@ int main() {
         serverC.handleRequest(request);
     }
 
-    std::cout << "\n--- Testing SSTable Pipeline ---\n";
+    std::cout
+        << "\n--- Testing SSTable Startup Recovery ---\n";
 
-    storageA.put("test:1", "Harsh");
-    storageA.put("test:2", "John");
-    storageA.put("test:3", "Alice");
+    {
+        StorageEngine testStorage(
+            "wal_recovery_test.log",
+            2
+        );
+
+        testStorage.put(
+            "restart:1",
+            "Harsh"
+        );
+
+        testStorage.put(
+            "restart:2",
+            "John"
+        );
+
+        std::cout
+            << "Before restart: "
+            << testStorage.get("restart:1")
+            << std::endl;
+    }
 
     std::cout
-        << "test:1 = "
-        << storageA.get("test:1")
-        << std::endl;
+        << "\n--- Simulating Restart ---\n";
 
-    std::cout
-        << "test:2 = "
-        << storageA.get("test:2")
-        << std::endl;
+    {
+        StorageEngine recoveredStorage(
+            "wal_recovery_test.log",
+            2
+        );
 
-    std::cout
-        << "test:3 = "
-        << storageA.get("test:3")
-        << std::endl;
+        std::string value =
+            recoveredStorage.get(
+                "restart:1"
+            );
+
+        if (value.empty()) {
+
+            std::cout
+                << "After restart: NOT FOUND"
+                << std::endl;
+        }
+        else {
+
+            std::cout
+                << "After restart: "
+                << value
+                << std::endl;
+        }
+    }
 
     return 0;
 }

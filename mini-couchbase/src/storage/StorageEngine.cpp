@@ -1,6 +1,104 @@
 #include "storage/StorageEngine.h"
 
+#include <algorithm>
+#include <filesystem>
 #include <vector>
+
+
+void StorageEngine::discoverSSTables() {
+
+    std::vector<
+        std::pair<std::size_t, std::string>
+    > discoveredFiles;
+
+    for (
+        const auto& entry :
+        std::filesystem::directory_iterator(".")
+    ) {
+
+        if (!entry.is_regular_file()) {
+            continue;
+        }
+
+        std::string filename =
+            entry.path().filename().string();
+
+        const std::string prefix = "sstable_";
+        const std::string suffix = ".db";
+
+        if (
+            filename.rfind(prefix, 0) != 0
+        ) {
+            continue;
+        }
+
+        if (
+            filename.size() <=
+            prefix.size() + suffix.size()
+        ) {
+            continue;
+        }
+
+        if (
+            filename.substr(
+                filename.size() - suffix.size()
+            ) != suffix
+        ) {
+            continue;
+        }
+
+        std::string numberString =
+            filename.substr(
+                prefix.size(),
+                filename.size() -
+                prefix.size() -
+                suffix.size()
+            );
+
+        try {
+
+            std::size_t number =
+                std::stoull(numberString);
+
+            discoveredFiles.push_back(
+                {
+                    number,
+                    entry.path().string()
+                }
+            );
+        }
+        catch (...) {
+            continue;
+        }
+    }
+
+    std::sort(
+        discoveredFiles.begin(),
+        discoveredFiles.end(),
+        [](
+            const auto& a,
+            const auto& b
+        ) {
+            return a.first < b.first;
+        }
+    );
+
+    for (
+        const auto& file :
+        discoveredFiles
+    ) {
+
+        sstableFiles.push_back(
+            file.second
+        );
+    }
+
+    if (!discoveredFiles.empty()) {
+
+        sstableCounter =
+            discoveredFiles.back().first + 1;
+    }
+}
 
 
 StorageEngine::StorageEngine(
@@ -10,10 +108,15 @@ StorageEngine::StorageEngine(
     : wal(walPath),
       memTableMaxEntries(memTableMaxEntries),
       activeMemTable(
-          std::make_unique<MemTable>(memTableMaxEntries)
+          std::make_unique<MemTable>(
+              memTableMaxEntries
+          )
       ) {
 
-    std::vector<Request> requests = wal.recover();
+    discoverSSTables();
+
+    std::vector<Request> requests =
+        wal.recover();
 
     for (const Request& request : requests) {
 
@@ -51,7 +154,8 @@ StorageEngine::StorageEngine(
 
 void StorageEngine::rotateMemTable() {
 
-    immutableMemTable = std::move(activeMemTable);
+    immutableMemTable =
+        std::move(activeMemTable);
 
     activeMemTable =
         std::make_unique<MemTable>(
@@ -80,7 +184,9 @@ void StorageEngine::flushImmutableMemTable() {
 
     if (success) {
 
-        sstableFiles.push_back(filePath);
+        sstableFiles.push_back(
+            filePath
+        );
 
         immutableMemTable.reset();
     }

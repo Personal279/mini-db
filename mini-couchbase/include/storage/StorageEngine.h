@@ -43,6 +43,8 @@ private:
 
     std::size_t sstableCounter = 0;
 
+    void discoverSSTables();
+
     void rotateMemTable();
 
     void flushImmutableMemTable();
