@@ -1,35 +1,20 @@
 #include <iostream>
 
 #include "api/HttpServer.h"
-
 #include "client/Client.h"
-
 #include "cluster/ClusterMetadata.h"
 #include "cluster/Node.h"
 #include "cluster/Partition.h"
-
 #include "node/PartitionManager.h"
 #include "node/RequestServer.h"
-
-#include "router/RequestRouter.h"
-
+#include "router/PartitionRouter.h"
+#include "router/RoutingService.h"
 #include "storage/StorageEngine.h"
 
-
 int main() {
-
-    // =========================
-    // CREATE NODES
-    // =========================
-
     Node nodeA(0, "127.0.0.1:9001");
     Node nodeB(1, "127.0.0.1:9002");
     Node nodeC(2, "127.0.0.1:9003");
-
-
-    // =========================
-    // CLUSTER METADATA
-    // =========================
 
     ClusterMetadata metadata;
 
@@ -37,33 +22,32 @@ int main() {
     metadata.addNode(nodeB);
     metadata.addNode(nodeC);
 
+    metadata.addPartition(
+        Partition(0, {0, 1, 2})
+    );
 
-    // =========================
-    // PARTITIONS
-    // =========================
+    metadata.addPartition(
+        Partition(1, {1, 2, 0})
+    );
 
-    metadata.addPartition(Partition(0, 0));
-    metadata.addPartition(Partition(1, 1));
-    metadata.addPartition(Partition(2, 2));
-    metadata.addPartition(Partition(3, 0));
+    metadata.addPartition(
+        Partition(2, {2, 0, 1})
+    );
 
+    metadata.addPartition(
+        Partition(3, {0, 1, 2})
+    );
 
     const int partitionCount = 4;
 
-
-    // =========================
-    // REQUEST ROUTER
-    // =========================
-
-    RequestRouter router(
-        metadata,
+    PartitionRouter partitionRouter(
         partitionCount
     );
 
-
-    // =========================
-    // STORAGE ENGINES
-    // =========================
+    RoutingService routingService(
+        partitionRouter,
+        metadata
+    );
 
     StorageEngine storageA(
         "data/nodeA/wal.log",
@@ -83,35 +67,16 @@ int main() {
         3
     );
 
-
-    // =========================
-    // PARTITION MANAGERS
-    // =========================
-
     PartitionManager partitionManagerA(storageA);
     PartitionManager partitionManagerB(storageB);
     PartitionManager partitionManagerC(storageC);
 
-
-    // Node A owns partitions 0 and 3
-
     partitionManagerA.addPartition(0);
     partitionManagerA.addPartition(3);
 
-
-    // Node B owns partition 1
-
     partitionManagerB.addPartition(1);
 
-
-    // Node C owns partition 2
-
     partitionManagerC.addPartition(2);
-
-
-    // =========================
-    // REQUEST SERVERS
-    // =========================
 
     RequestServer serverA(
         partitionManagerA,
@@ -128,36 +93,16 @@ int main() {
         partitionCount
     );
 
-
-    // =========================
-    // CLIENT
-    // =========================
-
     Client client;
-
-
-    // =========================
-    // START HTTP API SERVER
-    // =========================
 
     std::cout << "=============================" << std::endl;
     std::cout << "       MDDB SERVER" << std::endl;
     std::cout << "=============================" << std::endl;
-
     std::cout << "HTTP API running on:" << std::endl;
     std::cout << "http://localhost:8080" << std::endl;
 
-
-    // For Version 1 UI, connect the API
-    // directly to storageA.
-    //
-    // Later, when real networked nodes are added,
-    // the API can route requests through the cluster.
-
     HttpServer httpServer(storageA);
-
     httpServer.start();
-
 
     return 0;
 }

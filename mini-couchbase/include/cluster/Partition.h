@@ -1,13 +1,27 @@
 #pragma once
 
+#include <vector>
+
 class Partition {
 public:
-    Partition(int id, int activeNodeId);
+    Partition(
+        int id,
+        const std::vector<int>& replicaNodeIds
+    );
 
     int getId() const;
-    int getActiveNodeId() const;
+
+    const std::vector<int>& getReplicaNodeIds() const;
+
+    int getLeaderNodeId() const;
+    void setLeaderNodeId(int nodeId);
+
+    bool hasReplica(int nodeId) const;
 
 private:
     int id;
-    int activeNodeId;
+
+    std::vector<int> replicaNodeIds;
+
+    int leaderNodeId = -1;
 };

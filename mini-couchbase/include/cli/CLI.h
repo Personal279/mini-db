@@ -1,15 +1,14 @@
 #pragma once
 
 #include "client/Client.h"
-#include "router/RequestRouter.h"
 #include "node/RequestServer.h"
+#include "router/RoutingService.h"
 
 class CLI {
 public:
-
     CLI(
         Client& client,
-        RequestRouter& router,
+        RoutingService& routingService,
         RequestServer& serverA,
         RequestServer& serverB,
         RequestServer& serverC
@@ -18,9 +17,8 @@ public:
     void run();
 
 private:
-
     Client& client;
-    RequestRouter& router;
+    RoutingService& routingService;
 
     RequestServer& serverA;
     RequestServer& serverB;
