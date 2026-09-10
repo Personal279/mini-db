@@ -8,25 +8,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include_directories(include)
 
-
-# =========================
-# FIND CROW
-# =========================
-
 find_package(Crow CONFIG REQUIRED)
 
-
-# =========================
-# MAIN DATABASE APPLICATION
-# =========================
-
 add_executable(mini_couchbase
-
     src/main.cpp
 
     src/client/Client.cpp
-
-    src/router/RequestRouter.cpp
 
     src/cluster/Node.cpp
     src/cluster/Partition.cpp
@@ -35,6 +22,18 @@ add_executable(mini_couchbase
     src/node/RequestServer.cpp
     src/node/PartitionManager.cpp
 
+    src/router/PartitionRouter.cpp
+    src/router/RoutingService.cpp
+
+    src/network/NodeNetwork.cpp
+    src/network/RpcCodec.cpp
+
+    src/raft/RaftLog.cpp
+    src/raft/RaftGroup.cpp
+    src/raft/RequestVote.cpp
+    src/raft/ElectionManager.cpp
+    src/raft/RaftNetwork.cpp
+
     src/storage/MemTable.cpp
     src/storage/WAL.cpp
     src/storage/StorageEngine.cpp
@@ -42,14 +41,8 @@ add_executable(mini_couchbase
     src/storage/BloomFilter.cpp
 
     src/cli/CLI.cpp
-
     src/api/HttpServer.cpp
 )
-
-
-# =========================
-# LINK CROW
-# =========================
 
 target_link_libraries(
     mini_couchbase
@@ -57,18 +50,42 @@ target_link_libraries(
     Crow::Crow
 )
 
-
-# =========================
-# BENCHMARK
-# =========================
-
 add_executable(mddb_benchmark
-
     src/benchmark/BenchMark.cpp
-
     src/storage/MemTable.cpp
     src/storage/WAL.cpp
     src/storage/StorageEngine.cpp
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
 )
+
+add_executable(network_test
+    src/network/NetworkTest.cpp
+    src/network/NodeNetwork.cpp
+    src/network/RpcCodec.cpp
+)
+add_executable(raft_test
+    src/raft/RaftTest.cpp
+    src/network/NodeNetwork.cpp
+    src/network/RpcCodec.cpp
+    src/raft/RaftLog.cpp
+    src/raft/RaftGroup.cpp
+    src/raft/RequestVote.cpp
+    src/raft/ElectionManager.cpp
+    src/raft/RaftNetwork.cpp
+)
+
+
+if(WIN32)
+    target_link_libraries(
+        mini_couchbase
+        PRIVATE
+        ws2_32
+    )
+
+    target_link_libraries(
+        network_test
+        PRIVATE
+        ws2_32
+    )
+endif()
