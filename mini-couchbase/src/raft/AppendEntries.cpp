@@ -9,72 +9,46 @@ AppendEntriesHandler::AppendEntriesHandler(
 AppendEntriesResponse AppendEntriesHandler::handle(
     const AppendEntriesRequest& request
 ) {
-    if (
-        request.term <
-        group.getCurrentTerm()
-    ) {
+    if (request.term < group.getCurrentTerm()) {
         return {
             group.getCurrentTerm(),
             false
         };
     }
 
-    if (
-        request.term >
-        group.getCurrentTerm()
-    ) {
-        group.becomeFollower(
-            request.term
-        );
+    if (request.term > group.getCurrentTerm()) {
+        group.becomeFollower(request.term);
     }
 
-    if (
-        group.getRole() ==
-        RaftRole::CANDIDATE
-    ) {
+    if (group.getRole() != RaftRole::FOLLOWER) {
         group.becomeFollower(
             group.getCurrentTerm()
         );
     }
 
-    if (
-        !matchesPreviousLog(
+    if (!matchesPreviousLog(
             request.prevLogIndex,
             request.prevLogTerm
-        )
-    ) {
+        )) {
         return {
             group.getCurrentTerm(),
             false
         };
     }
 
-    for (
-        const LogEntry& entry :
-        request.entries
-    ) {
+    RaftLog& log = group.getLog();
+
+    for (const LogEntry& entry : request.entries) {
         const LogEntry* existing =
-            group.getLog().get(
-                entry.index
-            );
+            log.get(entry.index);
 
-        if (
-            existing != nullptr &&
-            existing->term != entry.term
-        ) {
-            group.getLog().removeFrom(
-                entry.index
-            );
-        }
-
-        if (
-            group.getLog().get(
-                entry.index
-            ) == nullptr
-        ) {
-            group.getLog().append(
-                entry
-            );
+        if (existing != nullptr) {
+            if (existing->term != entry.term) {
+                log.removeFrom(entry.index);
+                log.append(entry);
+            }
+        } else {
+            log.append(entry);
         }
     }
 
@@ -87,10 +61,10 @@ AppendEntriesResponse AppendEntriesHandler::handle(
 
         if (
             newCommitIndex >
-            group.getLog().getLastIndex()
+            log.getLastIndex()
         ) {
             newCommitIndex =
-                group.getLog().getLastIndex();
+                log.getLastIndex();
         }
 
         group.setCommitIndex(
@@ -112,10 +86,11 @@ bool AppendEntriesHandler::matchesPreviousLog(
         return true;
     }
 
+    const RaftLog& log =
+        group.getLog();
+
     const LogEntry* entry =
-        group.getLog().get(
-            prevLogIndex
-        );
+        log.get(prevLogIndex);
 
     if (entry == nullptr) {
         return false;

@@ -10,11 +10,13 @@ include_directories(include)
 
 find_package(Crow CONFIG REQUIRED)
 
+
 # ============================================================
 # Main Mini Couchbase Executable
 # ============================================================
 
 add_executable(mini_couchbase
+
     src/main.cpp
 
     # Client
@@ -44,6 +46,7 @@ add_executable(mini_couchbase
     src/raft/ElectionManager.cpp
     src/raft/RaftNetwork.cpp
     src/raft/AppendEntries.cpp
+    src/raft/RaftReplicationManager.cpp
 
     # Storage
     src/storage/MemTable.cpp
@@ -71,8 +74,10 @@ target_link_libraries(
 # ============================================================
 
 add_executable(mddb_benchmark
+
     src/benchmark/BenchMark.cpp
 
+    # Storage
     src/storage/MemTable.cpp
     src/storage/WAL.cpp
     src/storage/StorageEngine.cpp
@@ -86,8 +91,10 @@ add_executable(mddb_benchmark
 # ============================================================
 
 add_executable(network_test
+
     src/network/NetworkTest.cpp
 
+    # Network
     src/network/NodeNetwork.cpp
     src/network/RpcCodec.cpp
 )
@@ -98,6 +105,7 @@ add_executable(network_test
 # ============================================================
 
 add_executable(raft_test
+
     src/raft/RaftTest.cpp
 
     # Network
@@ -106,11 +114,22 @@ add_executable(raft_test
 
     # Raft
     src/raft/RaftLog.cpp
+    src/raft/RaftReplicationManager.cpp
     src/raft/RaftGroup.cpp
     src/raft/RequestVote.cpp
     src/raft/ElectionManager.cpp
     src/raft/RaftNetwork.cpp
     src/raft/AppendEntries.cpp
+
+    # Node
+    src/node/PartitionManager.cpp
+
+    # Storage
+    src/storage/MemTable.cpp
+    src/storage/WAL.cpp
+    src/storage/StorageEngine.cpp
+    src/storage/SSTable.cpp
+    src/storage/BloomFilter.cpp
 )
 
 
@@ -128,6 +147,12 @@ if(WIN32)
 
     target_link_libraries(
         network_test
+        PRIVATE
+        ws2_32
+    )
+
+    target_link_libraries(
+        raft_test
         PRIVATE
         ws2_32
     )

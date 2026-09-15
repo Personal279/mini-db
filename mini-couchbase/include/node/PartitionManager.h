@@ -1,22 +1,43 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "common/Types.h"
 #include "storage/StorageEngine.h"
 
+class RaftGroup;
+
 class PartitionManager {
 public:
-    PartitionManager(StorageEngine& storageEngine);
+    PartitionManager(
+        StorageEngine& storageEngine
+    );
 
-    void addPartition(int partitionId);
+    void setRaftGroup(
+        RaftGroup& raftGroup
+    );
 
-    bool ownsPartition(int partitionId) const;
+    void addPartition(
+        int partitionId
+    );
 
-    void processRequest(const Request& request);
+    bool ownsPartition(
+        int partitionId
+    ) const;
+
+    void processRequest(
+        const Request& request
+    );
+
+    void applyCommand(
+        const std::string& command
+    );
 
 private:
     std::vector<int> partitions;
 
     StorageEngine& storageEngine;
+
+    RaftGroup* raftGroup;
 };

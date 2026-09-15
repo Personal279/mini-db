@@ -1,7 +1,9 @@
 #include "raft/ElectionManager.h"
 
 #include <chrono>
+#include <iostream>
 #include <optional>
+#include <random>
 #include <string>
 #include <thread>
 
@@ -14,15 +16,15 @@ ElectionManager::ElectionManager(
     : group(group),
       network(network),
       votesReceived(0),
-      heartbeatRunning(false) {
+      electionTimerRunning(false),
+      lastHeartbeatTime(getCurrentTimeMs()) {
 }
 
 ElectionManager::~ElectionManager() {
-    stopHeartbeats();
+    stopElectionTimer();
 }
 
-RequestVoteRequest
-ElectionManager::createRequest() const {
+RequestVoteRequest ElectionManager::createRequest() const {
     return {
         group.getCurrentTerm(),
         group.getNodeId(),
@@ -32,11 +34,22 @@ ElectionManager::createRequest() const {
 }
 
 void ElectionManager::startElection() {
-    stopHeartbeats();
+    if (group.getRole() == RaftRole::LEADER) {
+        return;
+    }
 
     group.becomeCandidate();
 
     votesReceived = 1;
+
+    resetElectionTimer();
+
+    std::cout
+        << "Node "
+        << group.getNodeId()
+        << " started election for term "
+        << group.getCurrentTerm()
+        << std::endl;
 }
 
 bool ElectionManager::requestVotes() {
@@ -91,13 +104,13 @@ bool ElectionManager::processVote(
         response.term >
         group.getCurrentTerm()
     ) {
-        stopHeartbeats();
-
         group.becomeFollower(
             response.term
         );
 
         votesReceived = 0;
+
+        resetElectionTimer();
 
         return false;
     }
@@ -122,13 +135,29 @@ bool ElectionManager::processVote(
 
     votesReceived++;
 
+    std::cout
+        << "Node "
+        << group.getNodeId()
+        << " received vote. Votes: "
+        << votesReceived
+        << "/"
+        << getMajority()
+        << std::endl;
+
     if (
         votesReceived >=
         getMajority()
     ) {
         group.becomeLeader();
 
-        startHeartbeats();
+        resetElectionTimer();
+
+        std::cout
+            << "Node "
+            << group.getNodeId()
+            << " became LEADER for term "
+            << group.getCurrentTerm()
+            << std::endl;
 
         return true;
     }
@@ -149,77 +178,106 @@ int ElectionManager::getMajority() const {
     return (clusterSize / 2) + 1;
 }
 
-void ElectionManager::startHeartbeats() {
-    if (heartbeatRunning.load()) {
+void ElectionManager::resetElectionTimer() {
+    lastHeartbeatTime =
+        getCurrentTimeMs();
+}
+
+void ElectionManager::startElectionTimer() {
+    if (
+        electionTimerRunning.load()
+    ) {
         return;
     }
 
-    heartbeatRunning = true;
+    electionTimerRunning = true;
 
-    heartbeatThread =
+    resetElectionTimer();
+
+    electionTimerThread =
         std::thread(
-            &ElectionManager::heartbeatLoop,
+            &ElectionManager::electionTimerLoop,
             this
         );
 }
 
-void ElectionManager::stopHeartbeats() {
-    heartbeatRunning = false;
+void ElectionManager::stopElectionTimer() {
+    electionTimerRunning = false;
 
     if (
-        heartbeatThread.joinable() &&
-        heartbeatThread.get_id() !=
+        electionTimerThread.joinable() &&
+        electionTimerThread.get_id() !=
             std::this_thread::get_id()
     ) {
-        heartbeatThread.join();
+        electionTimerThread.join();
     }
 }
 
-void ElectionManager::heartbeatLoop() {
+void ElectionManager::electionTimerLoop() {
+    int electionTimeout =
+        getElectionTimeoutMs();
+
     while (
-        heartbeatRunning.load()
+        electionTimerRunning.load()
     ) {
         if (
-            group.getRole() !=
+            group.getRole() ==
             RaftRole::LEADER
         ) {
-            heartbeatRunning = false;
-            break;
+            resetElectionTimer();
+
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(100)
+            );
+
+            continue;
         }
 
-        AppendEntriesRequest request{
-            group.getCurrentTerm(),
-            group.getNodeId(),
-            group.getLog().getLastIndex(),
-            group.getLog().getLastTerm(),
-            group.getCommitIndex()
-        };
+        long long now =
+            getCurrentTimeMs();
 
-        for (
-            int peerId :
-            group.getPeerNodeIds()
+        long long elapsed =
+            now -
+            lastHeartbeatTime.load();
+
+        if (
+            elapsed >=
+            electionTimeout
         ) {
-            if (
-                !heartbeatRunning.load()
-            ) {
-                break;
-            }
+            startElection();
 
-            std::string host =
-                "127.0.0.1";
+            requestVotes();
 
-            int port =
-                9001 + peerId;
+            electionTimeout =
+                getElectionTimeoutMs();
 
-            network.sendAppendEntries(
-                host,
-                port,
-                request
-            );
+            resetElectionTimer();
         }
 
         std::this_thread::sleep_for(
-            std::chrono::milliseconds(500)
+            std::chrono::milliseconds(100)
         );
     }
+}
+
+long long ElectionManager::getCurrentTimeMs() const {
+    return std::chrono::duration_cast<
+        std::chrono::milliseconds
+    >(
+        std::chrono::steady_clock::now()
+            .time_since_epoch()
+    ).count();
+}
+
+int ElectionManager::getElectionTimeoutMs() const {
+    static thread_local std::mt19937 generator(
+        std::random_device{}()
+    );
+
+    std::uniform_int_distribution<int> distribution(
+        1500,
+        3000
+    );
+
+    return distribution(generator);
 }

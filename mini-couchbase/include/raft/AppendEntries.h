@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "raft/LogEntry.h"
@@ -21,9 +22,7 @@ struct AppendEntriesResponse {
 
 class AppendEntriesHandler {
 public:
-    explicit AppendEntriesHandler(
-        RaftGroup& group
-    );
+    explicit AppendEntriesHandler(RaftGroup& group);
 
     AppendEntriesResponse handle(
         const AppendEntriesRequest& request

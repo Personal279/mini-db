@@ -1,20 +1,37 @@
 #include <iostream>
+#include <thread>
 
 #include "api/HttpServer.h"
 #include "client/Client.h"
 #include "cluster/ClusterMetadata.h"
 #include "cluster/Node.h"
 #include "cluster/Partition.h"
+#include "network/NodeNetwork.h"
 #include "node/PartitionManager.h"
 #include "node/RequestServer.h"
+#include "raft/ElectionManager.h"
+#include "raft/RaftGroup.h"
+#include "raft/RaftNetwork.h"
+#include "raft/RaftReplicationManager.h"
 #include "router/PartitionRouter.h"
 #include "router/RoutingService.h"
 #include "storage/StorageEngine.h"
 
 int main() {
-    Node nodeA(0, "127.0.0.1:9001");
-    Node nodeB(1, "127.0.0.1:9002");
-    Node nodeC(2, "127.0.0.1:9003");
+    Node nodeA(
+        0,
+        "127.0.0.1:9001"
+    );
+
+    Node nodeB(
+        1,
+        "127.0.0.1:9002"
+    );
+
+    Node nodeC(
+        2,
+        "127.0.0.1:9003"
+    );
 
     ClusterMetadata metadata;
 
@@ -67,9 +84,17 @@ int main() {
         3
     );
 
-    PartitionManager partitionManagerA(storageA);
-    PartitionManager partitionManagerB(storageB);
-    PartitionManager partitionManagerC(storageC);
+    PartitionManager partitionManagerA(
+        storageA
+    );
+
+    PartitionManager partitionManagerB(
+        storageB
+    );
+
+    PartitionManager partitionManagerC(
+        storageC
+    );
 
     partitionManagerA.addPartition(0);
     partitionManagerA.addPartition(3);
@@ -77,6 +102,99 @@ int main() {
     partitionManagerB.addPartition(1);
 
     partitionManagerC.addPartition(2);
+
+    RaftGroup raftGroupA(
+        0,
+        {1, 2}
+    );
+
+    RaftGroup raftGroupB(
+        1,
+        {0, 2}
+    );
+
+    RaftGroup raftGroupC(
+        2,
+        {0, 1}
+    );
+
+    partitionManagerA.setRaftGroup(
+        raftGroupA
+    );
+
+    partitionManagerB.setRaftGroup(
+        raftGroupB
+    );
+
+    partitionManagerC.setRaftGroup(
+        raftGroupC
+    );
+
+    NodeNetwork networkA(
+        "127.0.0.1",
+        9001
+    );
+
+    NodeNetwork networkB(
+        "127.0.0.1",
+        9002
+    );
+
+    NodeNetwork networkC(
+        "127.0.0.1",
+        9003
+    );
+
+    RaftNetwork raftNetworkA(
+        networkA,
+        0,
+        raftGroupA
+    );
+
+    RaftNetwork raftNetworkB(
+        networkB,
+        1,
+        raftGroupB
+    );
+
+    RaftNetwork raftNetworkC(
+        networkC,
+        2,
+        raftGroupC
+    );
+
+    ElectionManager electionManagerA(
+        raftGroupA,
+        raftNetworkA
+    );
+
+    ElectionManager electionManagerB(
+        raftGroupB,
+        raftNetworkB
+    );
+
+    ElectionManager electionManagerC(
+        raftGroupC,
+        raftNetworkC
+    );
+
+    RaftReplicationManager replicationManagerA(
+        raftGroupA,
+        raftNetworkA,
+        partitionManagerA
+    );
+
+    RaftReplicationManager replicationManagerB(
+        raftGroupB,
+        raftNetworkB,
+        partitionManagerB
+    );
+
+    RaftReplicationManager replicationManagerC(
+        raftGroupC,
+        raftNetworkC,
+        partitionManagerC
+    );
 
     RequestServer serverA(
         partitionManagerA,
@@ -95,14 +213,77 @@ int main() {
 
     Client client;
 
-    std::cout << "=============================" << std::endl;
-    std::cout << "       MDDB SERVER" << std::endl;
-    std::cout << "=============================" << std::endl;
-    std::cout << "HTTP API running on:" << std::endl;
-    std::cout << "http://localhost:8080" << std::endl;
+    std::thread networkThreadA(
+        [&networkA]() {
+            networkA.start();
+        }
+    );
 
-    HttpServer httpServer(storageA);
+    std::thread networkThreadB(
+        [&networkB]() {
+            networkB.start();
+        }
+    );
+
+    std::thread networkThreadC(
+        [&networkC]() {
+            networkC.start();
+        }
+    );
+
+    electionManagerA.startElectionTimer();
+    electionManagerB.startElectionTimer();
+    electionManagerC.startElectionTimer();
+
+    replicationManagerA.start();
+    replicationManagerB.start();
+    replicationManagerC.start();
+
+    std::cout
+        << "============================="
+        << std::endl;
+
+    std::cout
+        << "       MDDB SERVER"
+        << std::endl;
+
+    std::cout
+        << "============================="
+        << std::endl;
+
+    std::cout
+        << "HTTP API running on:"
+        << std::endl;
+
+    std::cout
+        << "http://localhost:8080"
+        << std::endl;
+
+    HttpServer httpServer(
+        storageA
+    );
+
     httpServer.start();
+
+    replicationManagerA.stop();
+    replicationManagerB.stop();
+    replicationManagerC.stop();
+
+    electionManagerA.stopElectionTimer();
+    electionManagerB.stopElectionTimer();
+    electionManagerC.stopElectionTimer();
+
+    if (networkThreadA.joinable()) {
+        networkThreadA.detach();
+    }
+
+    if (networkThreadB.joinable()) {
+        networkThreadB.detach();
+    }
+
+    if (networkThreadC.joinable()) {
+        networkThreadC.detach();
+    }
 
     return 0;
 }

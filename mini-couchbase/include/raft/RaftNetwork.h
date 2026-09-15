@@ -55,12 +55,4 @@ private:
     std::string encodeAppendEntries(
         const AppendEntriesRequest& request
     ) const;
-
-    std::string encodeLogEntries(
-        const std::vector<LogEntry>& entries
-    ) const;
-
-    std::vector<LogEntry> decodeLogEntries(
-        const std::string& data
-    ) const;
 };

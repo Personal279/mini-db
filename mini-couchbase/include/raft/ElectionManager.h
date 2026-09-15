@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <thread>
 
 #include "raft/RaftGroup.h"
@@ -31,18 +32,26 @@ public:
 
     int getMajority() const;
 
+    void resetElectionTimer();
+
+    void startElectionTimer();
+
+    void stopElectionTimer();
+
 private:
     RaftGroup& group;
     RaftNetwork& network;
 
     int votesReceived;
 
-    std::atomic<bool> heartbeatRunning;
-    std::thread heartbeatThread;
+    std::atomic<bool> electionTimerRunning;
+    std::atomic<long long> lastHeartbeatTime;
 
-    void startHeartbeats();
+    std::thread electionTimerThread;
 
-    void stopHeartbeats();
+    void electionTimerLoop();
 
-    void heartbeatLoop();
+    long long getCurrentTimeMs() const;
+
+    int getElectionTimeoutMs() const;
 };
