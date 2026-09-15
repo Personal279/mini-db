@@ -62,37 +62,106 @@ RaftNetwork::sendRequestVote(
     );
 }
 
+std::optional<AppendEntriesResponse>
+RaftNetwork::sendAppendEntries(
+    const std::string& host,
+    int port,
+    const AppendEntriesRequest& request
+) {
+    std::string payload =
+        std::to_string(request.term) + "," +
+        std::to_string(request.leaderId) + "," +
+        std::to_string(request.prevLogIndex) + "," +
+        std::to_string(request.prevLogTerm) + "," +
+        std::to_string(request.leaderCommit);
+
+    RpcMessage message{
+        RpcType::APPEND_ENTRIES,
+        nodeId,
+        -1,
+        payload
+    };
+
+    std::optional<RpcMessage> response =
+        network.send(
+            host,
+            port,
+            message
+        );
+
+    if (!response.has_value()) {
+        return std::nullopt;
+    }
+
+    if (
+        response->type !=
+        RpcType::APPEND_ENTRIES_RESPONSE
+    ) {
+        return std::nullopt;
+    }
+
+    return decodeAppendEntriesResponse(
+        response.value()
+    );
+}
+
 std::optional<RpcMessage>
 RaftNetwork::handleMessage(
     const RpcMessage& message
 ) {
     if (
-        message.type !=
+        message.type ==
         RpcType::REQUEST_VOTE
     ) {
-        return std::nullopt;
+        RequestVoteRequest request =
+            decodeRequestVote(message);
+
+        RequestVoteHandler handler(
+            group
+        );
+
+        RequestVoteResponse response =
+            handler.handle(request);
+
+        std::string payload =
+            std::to_string(response.term) + "," +
+            (response.voteGranted ? "1" : "0");
+
+        return RpcMessage{
+            RpcType::VOTE_RESPONSE,
+            nodeId,
+            message.senderId,
+            payload
+        };
     }
 
-    RequestVoteRequest request =
-        decodeRequestVote(message);
+    if (
+        message.type ==
+        RpcType::APPEND_ENTRIES
+    ) {
+        AppendEntriesRequest request =
+            decodeAppendEntries(message);
 
-    RequestVoteHandler handler(
-        group
-    );
+        AppendEntriesHandler handler(
+            group
+        );
 
-    RequestVoteResponse response =
-        handler.handle(request);
+        AppendEntriesResponse response =
+            handler.handle(request);
 
-    std::string payload =
-        std::to_string(response.term) + "," +
-        (response.voteGranted ? "1" : "0");
+        std::string payload =
+            std::to_string(response.term) + "," +
+            (response.success ? "1" : "0");
 
-    return RpcMessage{
-        RpcType::VOTE_RESPONSE,
-        nodeId,
-        message.senderId,
-        payload
-    };
+        return RpcMessage{
+            RpcType::APPEND_ENTRIES_RESPONSE,
+            nodeId,
+            message.senderId,
+            payload
+        };
+    }
+
+    return std::nullopt;
 }
 
 RequestVoteRequest
@@ -166,5 +235,87 @@ RaftNetwork::decodeVoteResponse(
     return {
         std::stoi(term),
         voteGranted == "1"
+    };
+}
+
+AppendEntriesRequest
+RaftNetwork::decodeAppendEntries(
+    const RpcMessage& message
+) const {
+    std::stringstream stream(
+        message.payload
+    );
+
+    std::string term;
+    std::string leaderId;
+    std::string prevLogIndex;
+    std::string prevLogTerm;
+    std::string leaderCommit;
+
+    std::getline(
+        stream,
+        term,
+        ','
+    );
+
+    std::getline(
+        stream,
+        leaderId,
+        ','
+    );
+
+    std::getline(
+        stream,
+        prevLogIndex,
+        ','
+    );
+
+    std::getline(
+        stream,
+        prevLogTerm,
+        ','
+    );
+
+    std::getline(
+        stream,
+        leaderCommit,
+        ','
+    );
+
+    return {
+        std::stoi(term),
+        std::stoi(leaderId),
+        std::stoi(prevLogIndex),
+        std::stoi(prevLogTerm),
+        std::stoi(leaderCommit)
+    };
+}
+
+AppendEntriesResponse
+RaftNetwork::decodeAppendEntriesResponse(
+    const RpcMessage& message
+) const {
+    std::stringstream stream(
+        message.payload
+    );
+
+    std::string term;
+    std::string success;
+
+    std::getline(
+        stream,
+        term,
+        ','
+    );
+
+    std::getline(
+        stream,
+        success,
+        ','
+    );
+
+    return {
+        std::stoi(term),
+        success == "1"
     };
 }

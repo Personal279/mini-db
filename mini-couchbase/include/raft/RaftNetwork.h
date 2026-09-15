@@ -5,6 +5,7 @@
 
 #include "network/NodeNetwork.h"
 #include "raft/RequestVote.h"
+#include "raft/AppendEntries.h"
 
 class RaftNetwork {
 public:
@@ -18,6 +19,12 @@ public:
         const std::string& host,
         int port,
         const RequestVoteRequest& request
+    );
+
+    std::optional<AppendEntriesResponse> sendAppendEntries(
+        const std::string& host,
+        int port,
+        const AppendEntriesRequest& request
     );
 
 private:
@@ -34,6 +41,14 @@ private:
     ) const;
 
     RequestVoteResponse decodeVoteResponse(
+        const RpcMessage& message
+    ) const;
+
+    AppendEntriesRequest decodeAppendEntries(
+        const RpcMessage& message
+    ) const;
+
+    AppendEntriesResponse decodeAppendEntriesResponse(
         const RpcMessage& message
     ) const;
 };

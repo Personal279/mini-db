@@ -1,7 +1,9 @@
 #include "raft/ElectionManager.h"
 
+#include <chrono>
 #include <optional>
 #include <string>
+#include <thread>
 
 #include "raft/RaftNetwork.h"
 
@@ -11,7 +13,12 @@ ElectionManager::ElectionManager(
 )
     : group(group),
       network(network),
-      votesReceived(0) {
+      votesReceived(0),
+      heartbeatRunning(false) {
+}
+
+ElectionManager::~ElectionManager() {
+    stopHeartbeats();
 }
 
 RequestVoteRequest
@@ -25,6 +32,8 @@ ElectionManager::createRequest() const {
 }
 
 void ElectionManager::startElection() {
+    stopHeartbeats();
+
     group.becomeCandidate();
 
     votesReceived = 1;
@@ -82,6 +91,8 @@ bool ElectionManager::processVote(
         response.term >
         group.getCurrentTerm()
     ) {
+        stopHeartbeats();
+
         group.becomeFollower(
             response.term
         );
@@ -117,6 +128,8 @@ bool ElectionManager::processVote(
     ) {
         group.becomeLeader();
 
+        startHeartbeats();
+
         return true;
     }
 
@@ -134,4 +147,79 @@ int ElectionManager::getMajority() const {
         ) + 1;
 
     return (clusterSize / 2) + 1;
+}
+
+void ElectionManager::startHeartbeats() {
+    if (heartbeatRunning.load()) {
+        return;
+    }
+
+    heartbeatRunning = true;
+
+    heartbeatThread =
+        std::thread(
+            &ElectionManager::heartbeatLoop,
+            this
+        );
+}
+
+void ElectionManager::stopHeartbeats() {
+    heartbeatRunning = false;
+
+    if (
+        heartbeatThread.joinable() &&
+        heartbeatThread.get_id() !=
+            std::this_thread::get_id()
+    ) {
+        heartbeatThread.join();
+    }
+}
+
+void ElectionManager::heartbeatLoop() {
+    while (
+        heartbeatRunning.load()
+    ) {
+        if (
+            group.getRole() !=
+            RaftRole::LEADER
+        ) {
+            heartbeatRunning = false;
+            break;
+        }
+
+        AppendEntriesRequest request{
+            group.getCurrentTerm(),
+            group.getNodeId(),
+            group.getLog().getLastIndex(),
+            group.getLog().getLastTerm(),
+            group.getCommitIndex()
+        };
+
+        for (
+            int peerId :
+            group.getPeerNodeIds()
+        ) {
+            if (
+                !heartbeatRunning.load()
+            ) {
+                break;
+            }
+
+            std::string host =
+                "127.0.0.1";
+
+            int port =
+                9001 + peerId;
+
+            network.sendAppendEntries(
+                host,
+                port,
+                request
+            );
+        }
+
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(500)
+        );
+    }
 }

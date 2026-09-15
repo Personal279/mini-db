@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <thread>
+
 #include "raft/RaftGroup.h"
 #include "raft/RequestVote.h"
 
@@ -11,6 +14,8 @@ public:
         RaftGroup& group,
         RaftNetwork& network
     );
+
+    ~ElectionManager();
 
     RequestVoteRequest createRequest() const;
 
@@ -31,4 +36,13 @@ private:
     RaftNetwork& network;
 
     int votesReceived;
+
+    std::atomic<bool> heartbeatRunning;
+    std::thread heartbeatThread;
+
+    void startHeartbeats();
+
+    void stopHeartbeats();
+
+    void heartbeatLoop();
 };
