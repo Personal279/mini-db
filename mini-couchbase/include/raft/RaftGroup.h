@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 #include "raft/RaftLog.h"
@@ -49,6 +50,20 @@ public:
 
     void setLastApplied(int index);
 
+    int getNextIndex(int nodeId) const;
+
+    void setNextIndex(
+        int nodeId,
+        int index
+    );
+
+    int getMatchIndex(int nodeId) const;
+
+    void setMatchIndex(
+        int nodeId,
+        int index
+    );
+
 private:
     int nodeId;
 
@@ -65,4 +80,8 @@ private:
     int commitIndex;
 
     int lastApplied;
+
+    std::unordered_map<int, int> nextIndex;
+
+    std::unordered_map<int, int> matchIndex;
 };

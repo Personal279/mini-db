@@ -1,6 +1,7 @@
 #include "raft/RaftNetwork.h"
 
 #include <sstream>
+#include <stdexcept>
 
 #include "network/RpcCodec.h"
 
@@ -69,11 +70,7 @@ RaftNetwork::sendAppendEntries(
     const AppendEntriesRequest& request
 ) {
     std::string payload =
-        std::to_string(request.term) + "," +
-        std::to_string(request.leaderId) + "," +
-        std::to_string(request.prevLogIndex) + "," +
-        std::to_string(request.prevLogTerm) + "," +
-        std::to_string(request.leaderCommit);
+        encodeAppendEntries(request);
 
     RpcMessage message{
         RpcType::APPEND_ENTRIES,
@@ -238,6 +235,47 @@ RaftNetwork::decodeVoteResponse(
     };
 }
 
+std::string RaftNetwork::encodeAppendEntries(
+    const AppendEntriesRequest& request
+) const {
+    return
+        std::to_string(request.term) + "|" +
+        std::to_string(request.leaderId) + "|" +
+        std::to_string(request.prevLogIndex) + "|" +
+        std::to_string(request.prevLogTerm) + "|" +
+        std::to_string(request.leaderCommit) + "|" +
+        encodeLogEntries(request.entries);
+}
+
+std::string RaftNetwork::encodeLogEntries(
+    const std::vector<LogEntry>& entries
+) const {
+    std::string result;
+
+    for (
+        std::size_t i = 0;
+        i < entries.size();
+        ++i
+    ) {
+        const LogEntry& entry =
+            entries[i];
+
+        result +=
+            std::to_string(entry.term) + "," +
+            std::to_string(entry.index) + "," +
+            entry.command;
+
+        if (
+            i + 1 <
+            entries.size()
+        ) {
+            result += ";";
+        }
+    }
+
+    return result;
+}
+
 AppendEntriesRequest
 RaftNetwork::decodeAppendEntries(
     const RpcMessage& message
@@ -251,35 +289,41 @@ RaftNetwork::decodeAppendEntries(
     std::string prevLogIndex;
     std::string prevLogTerm;
     std::string leaderCommit;
+    std::string entriesData;
 
     std::getline(
         stream,
         term,
-        ','
+        '|'
     );
 
     std::getline(
         stream,
         leaderId,
-        ','
+        '|'
     );
 
     std::getline(
         stream,
         prevLogIndex,
-        ','
+        '|'
     );
 
     std::getline(
         stream,
         prevLogTerm,
-        ','
+        '|'
     );
 
     std::getline(
         stream,
         leaderCommit,
-        ','
+        '|'
+    );
+
+    std::getline(
+        stream,
+        entriesData
     );
 
     return {
@@ -287,8 +331,76 @@ RaftNetwork::decodeAppendEntries(
         std::stoi(leaderId),
         std::stoi(prevLogIndex),
         std::stoi(prevLogTerm),
+        decodeLogEntries(entriesData),
         std::stoi(leaderCommit)
     };
+}
+
+std::vector<LogEntry>
+RaftNetwork::decodeLogEntries(
+    const std::string& data
+) const {
+    std::vector<LogEntry> entries;
+
+    if (data.empty()) {
+        return entries;
+    }
+
+    std::stringstream entryStream(
+        data
+    );
+
+    std::string entryData;
+
+    while (
+        std::getline(
+            entryStream,
+            entryData,
+            ';'
+        )
+    ) {
+        std::stringstream stream(
+            entryData
+        );
+
+        std::string term;
+        std::string index;
+        std::string command;
+
+        std::getline(
+            stream,
+            term,
+            ','
+        );
+
+        std::getline(
+            stream,
+            index,
+            ','
+        );
+
+        std::getline(
+            stream,
+            command
+        );
+
+        if (
+            term.empty() ||
+            index.empty()
+        ) {
+            throw std::runtime_error(
+                "Invalid log entry"
+            );
+        }
+
+        entries.push_back({
+            std::stoi(term),
+            std::stoi(index),
+            command
+        });
+    }
+
+    return entries;
 }
 
 AppendEntriesResponse

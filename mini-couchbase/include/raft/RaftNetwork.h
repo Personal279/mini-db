@@ -4,8 +4,8 @@
 #include <string>
 
 #include "network/NodeNetwork.h"
-#include "raft/RequestVote.h"
 #include "raft/AppendEntries.h"
+#include "raft/RequestVote.h"
 
 class RaftNetwork {
 public:
@@ -50,5 +50,17 @@ private:
 
     AppendEntriesResponse decodeAppendEntriesResponse(
         const RpcMessage& message
+    ) const;
+
+    std::string encodeAppendEntries(
+        const AppendEntriesRequest& request
+    ) const;
+
+    std::string encodeLogEntries(
+        const std::vector<LogEntry>& entries
+    ) const;
+
+    std::vector<LogEntry> decodeLogEntries(
+        const std::string& data
     ) const;
 };

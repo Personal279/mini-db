@@ -20,6 +20,9 @@ RaftGroup::RaftGroup(
                 "Raft group cannot contain itself as a peer"
             );
         }
+
+        nextIndex[peerId] = 1;
+        matchIndex[peerId] = 0;
     }
 }
 
@@ -77,6 +80,14 @@ void RaftGroup::becomeCandidate() {
 
 void RaftGroup::becomeLeader() {
     role = RaftRole::LEADER;
+
+    int next =
+        raftLog.getLastIndex() + 1;
+
+    for (int peerId : peerNodeIds) {
+        nextIndex[peerId] = next;
+        matchIndex[peerId] = 0;
+    }
 }
 
 RaftLog& RaftGroup::getLog() {
@@ -113,4 +124,74 @@ void RaftGroup::setLastApplied(int index) {
     }
 
     lastApplied = index;
+}
+
+int RaftGroup::getNextIndex(int nodeId) const {
+    auto it =
+        nextIndex.find(nodeId);
+
+    if (it == nextIndex.end()) {
+        throw std::invalid_argument(
+            "Unknown peer node"
+        );
+    }
+
+    return it->second;
+}
+
+void RaftGroup::setNextIndex(
+    int nodeId,
+    int index
+) {
+    if (index < 1) {
+        throw std::invalid_argument(
+            "Next index must be at least 1"
+        );
+    }
+
+    auto it =
+        nextIndex.find(nodeId);
+
+    if (it == nextIndex.end()) {
+        throw std::invalid_argument(
+            "Unknown peer node"
+        );
+    }
+
+    it->second = index;
+}
+
+int RaftGroup::getMatchIndex(int nodeId) const {
+    auto it =
+        matchIndex.find(nodeId);
+
+    if (it == matchIndex.end()) {
+        throw std::invalid_argument(
+            "Unknown peer node"
+        );
+    }
+
+    return it->second;
+}
+
+void RaftGroup::setMatchIndex(
+    int nodeId,
+    int index
+) {
+    if (index < 0) {
+        throw std::invalid_argument(
+            "Match index cannot be negative"
+        );
+    }
+
+    auto it =
+        matchIndex.find(nodeId);
+
+    if (it == matchIndex.end()) {
+        throw std::invalid_argument(
+            "Unknown peer node"
+        );
+    }
+
+    it->second = index;
 }
