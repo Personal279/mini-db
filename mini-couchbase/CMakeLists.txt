@@ -158,3 +158,40 @@ if(WIN32)
     )
 
 endif()
+
+
+# ============================================================
+# Installation
+# ============================================================
+
+install(
+    TARGETS mini_couchbase
+    RUNTIME DESTINATION bin
+)
+
+# Runtime data required by Mini-Couchbase
+install(
+    DIRECTORY data/
+    DESTINATION bin/data
+)
+
+install(
+    DIRECTORY UI/PestDB/dist/
+    DESTINATION UI
+)
+# ============================================================
+# CPack Installer
+# ============================================================
+
+set(CPACK_PACKAGE_NAME "Mini-Couchbase")
+set(CPACK_PACKAGE_VERSION "1.0.0")
+set(CPACK_PACKAGE_VENDOR "Mini-Couchbase")
+
+set(
+    CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Mini Couchbase Distributed Key-Value Database"
+)
+
+set(CPACK_GENERATOR "NSIS")
+
+include(CPack)
