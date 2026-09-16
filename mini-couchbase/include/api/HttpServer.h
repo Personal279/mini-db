@@ -1,17 +1,14 @@
 #pragma once
-
-#include "storage/StorageEngine.h"
+#include <vector>
+#include <functional>
+#include "node/RequestServer.h"
 
 class HttpServer {
 public:
-
-    explicit HttpServer(
-        StorageEngine& storage
-    );
-
+    explicit HttpServer(std::vector<std::reference_wrapper<RequestServer>> servers);
     void start();
 
 private:
-
-    StorageEngine& storage;
+    std::vector<std::reference_wrapper<RequestServer>> servers;
+    Response dispatch(const Request& request);
 };

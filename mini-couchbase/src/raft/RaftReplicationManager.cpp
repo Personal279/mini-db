@@ -4,6 +4,7 @@
 #include <optional>
 #include <thread>
 #include <vector>
+#include <iostream>
 
 #include "raft/RaftNetwork.h"
 
@@ -98,6 +99,19 @@ void RaftReplicationManager::replicateToPeer(
 
     AppendEntriesRequest request =
         buildRequest(peerId);
+
+        std::cout
+            << "Node "
+            << group.getNodeId()
+            << " sending AppendEntries to Node "
+            << peerId
+            << ": entries="
+            << request.entries.size()
+            << " prevLogIndex="
+            << request.prevLogIndex
+            << " leaderCommit="
+            << request.leaderCommit
+            << std::endl;
 
     std::optional<AppendEntriesResponse>
         response =

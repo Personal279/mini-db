@@ -1,61 +1,101 @@
 #include "raft/AppendEntries.h"
 
+#include <iostream>
+
 AppendEntriesHandler::AppendEntriesHandler(
     RaftGroup& group
 )
     : group(group) {
 }
 
-AppendEntriesResponse AppendEntriesHandler::handle(
+AppendEntriesResponse
+AppendEntriesHandler::handle(
     const AppendEntriesRequest& request
 ) {
-    if (request.term < group.getCurrentTerm()) {
+
+    if (
+        request.term <
+        group.getCurrentTerm()
+    ) {
         return {
             group.getCurrentTerm(),
             false
         };
     }
 
-    if (request.term > group.getCurrentTerm()) {
-        group.becomeFollower(request.term);
+    if (
+        request.term >
+        group.getCurrentTerm()
+    ) {
+        group.becomeFollower(
+            request.term
+        );
     }
 
-    if (group.getRole() != RaftRole::FOLLOWER) {
+    if (
+        group.getRole() !=
+        RaftRole::FOLLOWER
+    ) {
         group.becomeFollower(
             group.getCurrentTerm()
         );
     }
 
-    if (!matchesPreviousLog(
+    if (
+        !matchesPreviousLog(
             request.prevLogIndex,
             request.prevLogTerm
-        )) {
+        )
+    ) {
         return {
             group.getCurrentTerm(),
             false
         };
     }
 
-    RaftLog& log = group.getLog();
+    RaftLog& log =
+        group.getLog();
 
-    for (const LogEntry& entry : request.entries) {
+    for (
+        const LogEntry& entry :
+        request.entries
+    ) {
+
         const LogEntry* existing =
             log.get(entry.index);
 
-        if (existing != nullptr) {
-            if (existing->term != entry.term) {
-                log.removeFrom(entry.index);
-                log.append(entry);
+        if (
+            existing != nullptr
+        ) {
+
+            if (
+                existing->term !=
+                entry.term
+            ) {
+
+                log.removeFrom(
+                    entry.index
+                );
+
+                log.append(
+                    entry
+                );
             }
+
         } else {
-            log.append(entry);
+
+            log.append(
+                entry
+            );
         }
     }
+
 
     if (
         request.leaderCommit >
         group.getCommitIndex()
     ) {
+
         int newCommitIndex =
             request.leaderCommit;
 
@@ -63,6 +103,7 @@ AppendEntriesResponse AppendEntriesHandler::handle(
             newCommitIndex >
             log.getLastIndex()
         ) {
+
             newCommitIndex =
                 log.getLastIndex();
         }
@@ -78,11 +119,15 @@ AppendEntriesResponse AppendEntriesHandler::handle(
     };
 }
 
-bool AppendEntriesHandler::matchesPreviousLog(
+bool
+AppendEntriesHandler::matchesPreviousLog(
     int prevLogIndex,
     int prevLogTerm
 ) const {
-    if (prevLogIndex == 0) {
+
+    if (
+        prevLogIndex == 0
+    ) {
         return true;
     }
 
@@ -92,9 +137,14 @@ bool AppendEntriesHandler::matchesPreviousLog(
     const LogEntry* entry =
         log.get(prevLogIndex);
 
-    if (entry == nullptr) {
+    if (
+        entry == nullptr
+    ) {
         return false;
     }
 
-    return entry->term == prevLogTerm;
+    return (
+        entry->term ==
+        prevLogTerm
+    );
 }

@@ -11,7 +11,9 @@ struct AppendEntriesRequest {
     int leaderId;
     int prevLogIndex;
     int prevLogTerm;
+
     std::vector<LogEntry> entries;
+
     int leaderCommit;
 };
 
@@ -22,7 +24,9 @@ struct AppendEntriesResponse {
 
 class AppendEntriesHandler {
 public:
-    explicit AppendEntriesHandler(RaftGroup& group);
+    explicit AppendEntriesHandler(
+        RaftGroup& group
+    );
 
     AppendEntriesResponse handle(
         const AppendEntriesRequest& request

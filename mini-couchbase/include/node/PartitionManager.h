@@ -1,43 +1,25 @@
+// node/PartitionManager.h
 #pragma once
 
-#include <string>
 #include <vector>
-
 #include "common/Types.h"
+#include "raft/RaftGroup.h"
 #include "storage/StorageEngine.h"
-
-class RaftGroup;
 
 class PartitionManager {
 public:
-    PartitionManager(
-        StorageEngine& storageEngine
-    );
+    PartitionManager(StorageEngine& storageEngine, RaftGroup& raftGroup);
 
-    void setRaftGroup(
-        RaftGroup& raftGroup
-    );
+    void addPartition(int partitionId);
+    bool ownsPartition(int partitionId) const;
 
-    void addPartition(
-        int partitionId
-    );
-
-    bool ownsPartition(
-        int partitionId
-    ) const;
-
-    void processRequest(
-        const Request& request
-    );
-
-    void applyCommand(
-        const std::string& command
-    );
+    Response processRequest(const Request& request);
+    void applyCommand(const std::string& command);
 
 private:
+    StorageEngine& storageEngine;
+    RaftGroup& raftGroup;
     std::vector<int> partitions;
 
-    StorageEngine& storageEngine;
-
-    RaftGroup* raftGroup;
+    void appendWriteCommand(const Request& request);
 };

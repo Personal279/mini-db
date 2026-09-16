@@ -2,6 +2,7 @@
 
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 #include "network/RpcCodec.h"
 
@@ -21,12 +22,20 @@ RaftNetwork::RaftNetwork(
     );
 }
 
+void RaftNetwork::setHeartbeatCallback(
+    std::function<void()> callback
+) {
+    heartbeatCallback =
+        std::move(callback);
+}
+
 std::optional<RequestVoteResponse>
 RaftNetwork::sendRequestVote(
     const std::string& host,
     int port,
     const RequestVoteRequest& request
 ) {
+
     std::string payload =
         std::to_string(request.term) + "," +
         std::to_string(request.candidateId) + "," +
@@ -69,6 +78,7 @@ RaftNetwork::sendAppendEntries(
     int port,
     const AppendEntriesRequest& request
 ) {
+
     RpcMessage message{
         RpcType::APPEND_ENTRIES,
         nodeId,
@@ -103,10 +113,12 @@ std::optional<RpcMessage>
 RaftNetwork::handleMessage(
     const RpcMessage& message
 ) {
+
     if (
         message.type ==
         RpcType::REQUEST_VOTE
     ) {
+
         RequestVoteRequest request =
             decodeRequestVote(message);
 
@@ -131,6 +143,7 @@ RaftNetwork::handleMessage(
         message.type ==
         RpcType::APPEND_ENTRIES
     ) {
+
         AppendEntriesRequest request =
             decodeAppendEntries(message);
 
@@ -138,6 +151,14 @@ RaftNetwork::handleMessage(
 
         AppendEntriesResponse response =
             handler.handle(request);
+
+        if (
+            response.success &&
+            heartbeatCallback
+        ) {
+
+            heartbeatCallback();
+        }
 
         std::string payload =
             std::to_string(response.term) + "," +
@@ -158,6 +179,7 @@ RequestVoteRequest
 RaftNetwork::decodeRequestVote(
     const RpcMessage& message
 ) const {
+
     std::stringstream stream(
         message.payload
     );
@@ -167,10 +189,29 @@ RaftNetwork::decodeRequestVote(
     std::string lastLogIndex;
     std::string lastLogTerm;
 
-    std::getline(stream, term, ',');
-    std::getline(stream, candidateId, ',');
-    std::getline(stream, lastLogIndex, ',');
-    std::getline(stream, lastLogTerm, ',');
+    std::getline(
+        stream,
+        term,
+        ','
+    );
+
+    std::getline(
+        stream,
+        candidateId,
+        ','
+    );
+
+    std::getline(
+        stream,
+        lastLogIndex,
+        ','
+    );
+
+    std::getline(
+        stream,
+        lastLogTerm,
+        ','
+    );
 
     return {
         std::stoi(term),
@@ -184,6 +225,7 @@ RequestVoteResponse
 RaftNetwork::decodeVoteResponse(
     const RpcMessage& message
 ) const {
+
     std::stringstream stream(
         message.payload
     );
@@ -191,8 +233,17 @@ RaftNetwork::decodeVoteResponse(
     std::string term;
     std::string voteGranted;
 
-    std::getline(stream, term, ',');
-    std::getline(stream, voteGranted, ',');
+    std::getline(
+        stream,
+        term,
+        ','
+    );
+
+    std::getline(
+        stream,
+        voteGranted,
+        ','
+    );
 
     return {
         std::stoi(term),
@@ -203,6 +254,7 @@ RaftNetwork::decodeVoteResponse(
 std::string RaftNetwork::encodeAppendEntries(
     const AppendEntriesRequest& request
 ) const {
+
     std::stringstream stream;
 
     stream
@@ -213,7 +265,11 @@ std::string RaftNetwork::encodeAppendEntries(
         << request.leaderCommit << "|"
         << request.entries.size();
 
-    for (const LogEntry& entry : request.entries) {
+    for (
+        const LogEntry& entry :
+        request.entries
+    ) {
+
         stream
             << "|"
             << entry.term
@@ -230,44 +286,108 @@ AppendEntriesRequest
 RaftNetwork::decodeAppendEntries(
     const RpcMessage& message
 ) const {
+
     std::stringstream stream(
         message.payload
     );
 
     std::string value;
 
-    std::getline(stream, value, '|');
-    int term = std::stoi(value);
+    std::getline(
+        stream,
+        value,
+        '|'
+    );
 
-    std::getline(stream, value, '|');
-    int leaderId = std::stoi(value);
+    int term =
+        std::stoi(value);
 
-    std::getline(stream, value, '|');
-    int prevLogIndex = std::stoi(value);
+    std::getline(
+        stream,
+        value,
+        '|'
+    );
 
-    std::getline(stream, value, '|');
-    int prevLogTerm = std::stoi(value);
+    int leaderId =
+        std::stoi(value);
 
-    std::getline(stream, value, '|');
-    int leaderCommit = std::stoi(value);
+    std::getline(
+        stream,
+        value,
+        '|'
+    );
 
-    std::getline(stream, value, '|');
-    int entryCount = std::stoi(value);
+    int prevLogIndex =
+        std::stoi(value);
+
+    std::getline(
+        stream,
+        value,
+        '|'
+    );
+
+    int prevLogTerm =
+        std::stoi(value);
+
+    std::getline(
+        stream,
+        value,
+        '|'
+    );
+
+    int leaderCommit =
+        std::stoi(value);
+
+    std::getline(
+        stream,
+        value,
+        '|'
+    );
+
+    int entryCount =
+        std::stoi(value);
 
     std::vector<LogEntry> entries;
 
-    for (int i = 0; i < entryCount; i++) {
+    for (
+        int i = 0;
+        i < entryCount;
+        i++
+    ) {
+
         std::string entryTerm;
         std::string entryIndex;
         std::string command;
 
-        std::getline(stream, entryTerm, '|');
-        std::getline(stream, entryIndex, '|');
+        std::getline(
+            stream,
+            entryTerm,
+            '|'
+        );
 
-        if (i + 1 == entryCount) {
-            std::getline(stream, command);
+        std::getline(
+            stream,
+            entryIndex,
+            '|'
+        );
+
+        if (
+            i + 1 ==
+            entryCount
+        ) {
+
+            std::getline(
+                stream,
+                command
+            );
+
         } else {
-            std::getline(stream, command, '|');
+
+            std::getline(
+                stream,
+                command,
+                '|'
+            );
         }
 
         entries.push_back({
@@ -291,6 +411,7 @@ AppendEntriesResponse
 RaftNetwork::decodeAppendEntriesResponse(
     const RpcMessage& message
 ) const {
+
     std::stringstream stream(
         message.payload
     );
@@ -298,8 +419,17 @@ RaftNetwork::decodeAppendEntriesResponse(
     std::string term;
     std::string success;
 
-    std::getline(stream, term, ',');
-    std::getline(stream, success, ',');
+    std::getline(
+        stream,
+        term,
+        ','
+    );
+
+    std::getline(
+        stream,
+        success,
+        ','
+    );
 
     return {
         std::stoi(term),

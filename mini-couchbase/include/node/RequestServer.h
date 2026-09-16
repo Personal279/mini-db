@@ -1,3 +1,4 @@
+// node/RequestServer.h
 #pragma once
 
 #include "common/Types.h"
@@ -5,12 +6,9 @@
 
 class RequestServer {
 public:
-    RequestServer(
-        PartitionManager& partitionManager,
-        int partitionCount
-    );
+    RequestServer(PartitionManager& partitionManager, int partitionCount);
 
-    void handleRequest(const Request& request);
+    Response handleRequest(const Request& request);
 
 private:
     PartitionManager& partitionManager;

@@ -1,3 +1,4 @@
+// main.cpp
 #include <iostream>
 #include <thread>
 
@@ -18,20 +19,9 @@
 #include "storage/StorageEngine.h"
 
 int main() {
-    Node nodeA(
-        0,
-        "127.0.0.1:9001"
-    );
-
-    Node nodeB(
-        1,
-        "127.0.0.1:9002"
-    );
-
-    Node nodeC(
-        2,
-        "127.0.0.1:9003"
-    );
+    Node nodeA(0, "127.0.0.1:9001");
+    Node nodeB(1, "127.0.0.1:9002");
+    Node nodeC(2, "127.0.0.1:9003");
 
     ClusterMetadata metadata;
 
@@ -39,197 +29,68 @@ int main() {
     metadata.addNode(nodeB);
     metadata.addNode(nodeC);
 
-    metadata.addPartition(
-        Partition(0, {0, 1, 2})
-    );
-
-    metadata.addPartition(
-        Partition(1, {1, 2, 0})
-    );
-
-    metadata.addPartition(
-        Partition(2, {2, 0, 1})
-    );
-
-    metadata.addPartition(
-        Partition(3, {0, 1, 2})
-    );
+    metadata.addPartition(Partition(0, {0, 1, 2}));
+    metadata.addPartition(Partition(1, {1, 2, 0}));
+    metadata.addPartition(Partition(2, {2, 0, 1}));
+    metadata.addPartition(Partition(3, {0, 1, 2}));
 
     const int partitionCount = 4;
 
-    PartitionRouter partitionRouter(
-        partitionCount
-    );
+    PartitionRouter partitionRouter(partitionCount);
+    RoutingService routingService(partitionRouter, metadata);
 
-    RoutingService routingService(
-        partitionRouter,
-        metadata
-    );
+    StorageEngine storageA("data/nodeA/wal.log", "data/nodeA", 3);
+    StorageEngine storageB("data/nodeB/wal.log", "data/nodeB", 3);
+    StorageEngine storageC("data/nodeC/wal.log", "data/nodeC", 3);
 
-    StorageEngine storageA(
-        "data/nodeA/wal.log",
-        "data/nodeA",
-        3
-    );
+    RaftGroup raftGroupA(0, {1, 2});
+    RaftGroup raftGroupB(1, {0, 2});
+    RaftGroup raftGroupC(2, {0, 1});
 
-    StorageEngine storageB(
-        "data/nodeB/wal.log",
-        "data/nodeB",
-        3
-    );
-
-    StorageEngine storageC(
-        "data/nodeC/wal.log",
-        "data/nodeC",
-        3
-    );
-
-    PartitionManager partitionManagerA(
-        storageA
-    );
-
-    PartitionManager partitionManagerB(
-        storageB
-    );
-
-    PartitionManager partitionManagerC(
-        storageC
-    );
+    PartitionManager partitionManagerA(storageA, raftGroupA);
+    PartitionManager partitionManagerB(storageB, raftGroupB);
+    PartitionManager partitionManagerC(storageC, raftGroupC);
 
     partitionManagerA.addPartition(0);
+    partitionManagerA.addPartition(1);
+    partitionManagerA.addPartition(2);
     partitionManagerA.addPartition(3);
 
+    partitionManagerB.addPartition(0);
     partitionManagerB.addPartition(1);
+    partitionManagerB.addPartition(2);
+    partitionManagerB.addPartition(3);
 
+    partitionManagerC.addPartition(0);
+    partitionManagerC.addPartition(1);
     partitionManagerC.addPartition(2);
+    partitionManagerC.addPartition(3);
 
-    RaftGroup raftGroupA(
-        0,
-        {1, 2}
-    );
+    NodeNetwork networkA("127.0.0.1", 9001);
+    NodeNetwork networkB("127.0.0.1", 9002);
+    NodeNetwork networkC("127.0.0.1", 9003);
 
-    RaftGroup raftGroupB(
-        1,
-        {0, 2}
-    );
+    RaftNetwork raftNetworkA(networkA, 0, raftGroupA);
+    RaftNetwork raftNetworkB(networkB, 1, raftGroupB);
+    RaftNetwork raftNetworkC(networkC, 2, raftGroupC);
 
-    RaftGroup raftGroupC(
-        2,
-        {0, 1}
-    );
+    ElectionManager electionManagerA(raftGroupA, raftNetworkA);
+    ElectionManager electionManagerB(raftGroupB, raftNetworkB);
+    ElectionManager electionManagerC(raftGroupC, raftNetworkC);
 
-    partitionManagerA.setRaftGroup(
-        raftGroupA
-    );
+    RaftReplicationManager replicationManagerA(raftGroupA, raftNetworkA, partitionManagerA);
+    RaftReplicationManager replicationManagerB(raftGroupB, raftNetworkB, partitionManagerB);
+    RaftReplicationManager replicationManagerC(raftGroupC, raftNetworkC, partitionManagerC);
 
-    partitionManagerB.setRaftGroup(
-        raftGroupB
-    );
-
-    partitionManagerC.setRaftGroup(
-        raftGroupC
-    );
-
-    NodeNetwork networkA(
-        "127.0.0.1",
-        9001
-    );
-
-    NodeNetwork networkB(
-        "127.0.0.1",
-        9002
-    );
-
-    NodeNetwork networkC(
-        "127.0.0.1",
-        9003
-    );
-
-    RaftNetwork raftNetworkA(
-        networkA,
-        0,
-        raftGroupA
-    );
-
-    RaftNetwork raftNetworkB(
-        networkB,
-        1,
-        raftGroupB
-    );
-
-    RaftNetwork raftNetworkC(
-        networkC,
-        2,
-        raftGroupC
-    );
-
-    ElectionManager electionManagerA(
-        raftGroupA,
-        raftNetworkA
-    );
-
-    ElectionManager electionManagerB(
-        raftGroupB,
-        raftNetworkB
-    );
-
-    ElectionManager electionManagerC(
-        raftGroupC,
-        raftNetworkC
-    );
-
-    RaftReplicationManager replicationManagerA(
-        raftGroupA,
-        raftNetworkA,
-        partitionManagerA
-    );
-
-    RaftReplicationManager replicationManagerB(
-        raftGroupB,
-        raftNetworkB,
-        partitionManagerB
-    );
-
-    RaftReplicationManager replicationManagerC(
-        raftGroupC,
-        raftNetworkC,
-        partitionManagerC
-    );
-
-    RequestServer serverA(
-        partitionManagerA,
-        partitionCount
-    );
-
-    RequestServer serverB(
-        partitionManagerB,
-        partitionCount
-    );
-
-    RequestServer serverC(
-        partitionManagerC,
-        partitionCount
-    );
+    RequestServer serverA(partitionManagerA, partitionCount);
+    RequestServer serverB(partitionManagerB, partitionCount);
+    RequestServer serverC(partitionManagerC, partitionCount);
 
     Client client;
 
-    std::thread networkThreadA(
-        [&networkA]() {
-            networkA.start();
-        }
-    );
-
-    std::thread networkThreadB(
-        [&networkB]() {
-            networkB.start();
-        }
-    );
-
-    std::thread networkThreadC(
-        [&networkC]() {
-            networkC.start();
-        }
-    );
+    std::thread networkThreadA([&networkA]() { networkA.start(); });
+    std::thread networkThreadB([&networkB]() { networkB.start(); });
+    std::thread networkThreadC([&networkC]() { networkC.start(); });
 
     electionManagerA.startElectionTimer();
     electionManagerB.startElectionTimer();
@@ -239,29 +100,17 @@ int main() {
     replicationManagerB.start();
     replicationManagerC.start();
 
-    std::cout
-        << "============================="
-        << std::endl;
+    std::cout << "=============================" << std::endl;
+    std::cout << "       MDDB SERVER" << std::endl;
+    std::cout << "=============================" << std::endl;
+    std::cout << "HTTP API running on:" << std::endl;
+    std::cout << "http://localhost:8080" << std::endl;
 
-    std::cout
-        << "       MDDB SERVER"
-        << std::endl;
-
-    std::cout
-        << "============================="
-        << std::endl;
-
-    std::cout
-        << "HTTP API running on:"
-        << std::endl;
-
-    std::cout
-        << "http://localhost:8080"
-        << std::endl;
-
-    HttpServer httpServer(
-        storageA
-    );
+    HttpServer httpServer({
+        std::ref(serverA),
+        std::ref(serverB),
+        std::ref(serverC)
+    });
 
     httpServer.start();
 
@@ -273,17 +122,9 @@ int main() {
     electionManagerB.stopElectionTimer();
     electionManagerC.stopElectionTimer();
 
-    if (networkThreadA.joinable()) {
-        networkThreadA.detach();
-    }
-
-    if (networkThreadB.joinable()) {
-        networkThreadB.detach();
-    }
-
-    if (networkThreadC.joinable()) {
-        networkThreadC.detach();
-    }
+    if (networkThreadA.joinable()) networkThreadA.detach();
+    if (networkThreadB.joinable()) networkThreadB.detach();
+    if (networkThreadC.joinable()) networkThreadC.detach();
 
     return 0;
 }

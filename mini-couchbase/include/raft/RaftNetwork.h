@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -27,10 +28,16 @@ public:
         const AppendEntriesRequest& request
     );
 
+    void setHeartbeatCallback(
+        std::function<void()> callback
+    );
+
 private:
     NodeNetwork& network;
     int nodeId;
     RaftGroup& group;
+
+    std::function<void()> heartbeatCallback;
 
     std::optional<RpcMessage> handleMessage(
         const RpcMessage& message
