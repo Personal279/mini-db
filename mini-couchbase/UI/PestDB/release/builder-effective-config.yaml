@@ -1,0 +1,23 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.mini.couchbase.app
+productName: Mini-Couchbase
+files:
+  - filter:
+      - electron/**/*
+      - dist/**/*
+      - package.json
+extraResources:
+  - from: ../../build/Release/mini_couchbase.exe
+    to: backend/mini_couchbase.exe
+  - from: ../../data
+    to: data
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+electronVersion: 41.7.1

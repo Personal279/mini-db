@@ -1,25 +1,58 @@
 const { app, BrowserWindow } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
+const fs = require("fs");
 
 let backendProcess;
 let mainWindow;
 
-function startBackend() {
-    const projectRoot = path.resolve(__dirname, "..", "..", "..");
+function getBackendPath() {
+    if (app.isPackaged) {
+        return path.join(
+            process.resourcesPath,
+            "backend",
+            "mini_couchbase.exe"
+        );
+    }
 
-    const backendPath = path.join(
-        projectRoot,
+    return path.resolve(
+        __dirname,
+        "..",
+        "..",
+        "..",
         "build",
         "Release",
         "mini_couchbase.exe"
     );
+}
 
-    console.log("Project root:", projectRoot);
-    console.log("Starting backend:", backendPath);
+function getBackendWorkingDirectory() {
+    if (app.isPackaged) {
+        return process.resourcesPath;
+    }
+
+    return path.resolve(
+        __dirname,
+        "..",
+        "..",
+        ".."
+    );
+}
+
+function startBackend() {
+    const backendPath = getBackendPath();
+    const workingDirectory = getBackendWorkingDirectory();
+
+    console.log("Backend:", backendPath);
+    console.log("Working directory:", workingDirectory);
+
+    if (!fs.existsSync(backendPath)) {
+        console.error("Backend executable not found:", backendPath);
+        return;
+    }
 
     backendProcess = spawn(backendPath, [], {
-        cwd: projectRoot,
+        cwd: workingDirectory,
         windowsHide: true
     });
 
@@ -33,7 +66,12 @@ function startBackend() {
 }
 
 function createWindow() {
-    const uiPath = path.resolve(__dirname, "..", "dist", "index.html");
+    const uiPath = path.resolve(
+        __dirname,
+        "..",
+        "dist",
+        "index.html"
+    );
 
     console.log("Loading UI:", uiPath);
 
@@ -63,6 +101,7 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
     if (backendProcess) {
         backendProcess.kill();
+        backendProcess = null;
     }
 
     if (process.platform !== "darwin") {
@@ -73,5 +112,6 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
     if (backendProcess) {
         backendProcess.kill();
+        backendProcess = null;
     }
 });

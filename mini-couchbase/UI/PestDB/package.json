@@ -1,7 +1,7 @@
 {
-  "name": "npm",
+  "name": "mini-couchbase",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -9,7 +9,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron": "electron ."
+    "electron": "electron .",
+    "dist": "npm run build && electron-builder"
   },
   "dependencies": {
     "lodash": "^4.18.1",
@@ -25,11 +26,43 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.2.4",
     "electron": "^41.7.1",
+    "electron-builder": "^24.13.3",
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.0",
     "eslint-plugin-react-refresh": "^0.5.4",
     "globals": "^17.11.0",
     "vite": "^5.4.10",
     "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.mini.couchbase.app",
+    "productName": "Mini-Couchbase",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../build/Release/mini_couchbase.exe",
+        "to": "backend/mini_couchbase.exe"
+      },
+      {
+        "from": "../../data",
+        "to": "data"
+      }
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
