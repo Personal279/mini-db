@@ -1,82 +1,75 @@
+
 #include "storage/SSTable.h"
 
 #include <algorithm>
 #include <fstream>
+#include <iostream>
+#include <string>
+#include <utility>
 #include <vector>
-
 
 bool SSTable::write(
     const MemTable& memTable,
     const std::string& filePath
 ) {
-
-    std::ofstream file(
-        filePath,
-        std::ios::binary
-    );
+    std::ofstream file(filePath, std::ios::binary | std::ios::trunc);
 
     if (!file.is_open()) {
+        std::cerr << "Failed to open SSTable for writing: "
+                  << filePath << '\n';
         return false;
     }
 
-    std::vector<
-        std::pair<std::string, std::string>
-    > entries;
+    std::vector<std::pair<std::string, std::string>> entries;
 
-    for (
-        const auto& entry :
-        memTable.getData()
-    ) {
-
+    for (const auto& entry : memTable.getData()) {
         entries.push_back(entry);
     }
 
     std::sort(
         entries.begin(),
         entries.end(),
-        [](
-            const auto& a,
-            const auto& b
-        ) {
+        [](const auto& a, const auto& b) {
             return a.first < b.first;
         }
     );
 
-    for (
-        const auto& entry :
-        entries
-    ) {
+    for (const auto& entry : entries) {
+        file << entry.first << '|' << entry.second << '\n';
 
-        file
-            << entry.first
-            << "|"
-            << entry.second
-            << "\n";
+        if (!file) {
+            std::cerr << "Failed while writing SSTable: "
+                      << filePath << '\n';
+            return false;
+        }
+    }
+
+    file.flush();
+
+    if (!file) {
+        std::cerr << "Failed to flush SSTable: "
+                  << filePath << '\n';
+        return false;
     }
 
     return true;
 }
 
-
 SSTable::Index SSTable::buildIndex(
     const std::string& filePath
 ) {
-
     Index index;
 
-    std::ifstream file(
-        filePath,
-        std::ios::binary
-    );
+    std::ifstream file(filePath, std::ios::binary);
 
     if (!file.is_open()) {
+        std::cerr << "Failed to open SSTable for indexing: "
+                  << filePath << '\n';
         return index;
     }
 
     while (true) {
-
-        std::streampos position =
-            file.tellg();
+        const std::streampos position = file.tellg();
 
         std::string line;
 
@@ -84,101 +77,75 @@ SSTable::Index SSTable::buildIndex(
             break;
         }
 
-        std::size_t separator =
-            line.find('|');
+        const std::size_t separator = line.find('|');
 
-        if (
-            separator ==
-            std::string::npos
-        ) {
+        if (separator == std::string::npos) {
             continue;
         }
 
-        std::string key =
-            line.substr(
-                0,
-                separator
-            );
-
+        const std::string key = line.substr(0, separator);
         index[key] = position;
     }
 
     return index;
 }
 
-
 BloomFilter SSTable::buildBloomFilter(
     const std::string& filePath,
     std::size_t filterSize
 ) {
+    BloomFilter bloomFilter(filterSize);
 
-    BloomFilter bloomFilter(
-        filterSize
-    );
-
-    std::ifstream file(
-        filePath,
-        std::ios::binary
-    );
+    std::ifstream file(filePath, std::ios::binary);
 
     if (!file.is_open()) {
+        std::cerr << "Failed to open SSTable for Bloom filter: "
+                  << filePath << '\n';
         return bloomFilter;
     }
 
     std::string line;
 
-    while (
-        std::getline(file, line)
-    ) {
+    while (std::getline(file, line)) {
+        const std::size_t separator = line.find('|');
 
-        std::size_t separator =
-            line.find('|');
-
-        if (
-            separator ==
-            std::string::npos
-        ) {
+        if (separator == std::string::npos) {
             continue;
         }
 
-        std::string key =
-            line.substr(
-                0,
-                separator
-            );
-
+        const std::string key = line.substr(0, separator);
         bloomFilter.add(key);
     }
 
     return bloomFilter;
 }
 
-
 std::string SSTable::readWithIndex(
     const std::string& key,
     const std::string& filePath,
     const Index& index
 ) {
-
-    auto it =
-        index.find(key);
+    const auto it = index.find(key);
 
     if (it == index.end()) {
         return "";
     }
 
-    std::ifstream file(
-        filePath,
-        std::ios::binary
-    );
+    std::ifstream file(filePath, std::ios::binary);
 
     if (!file.is_open()) {
+        std::cerr << "Failed to open SSTable for indexed read: "
+                  << filePath << '\n';
         return "";
     }
 
-    file.seekg(
-        it->second
-    );
+    file.seekg(it->second);
+
+    if (!file) {
+        std::cerr << "Failed to seek to indexed SSTable entry: "
+                  << filePath << '\n';
+        return "";
+    }
 
     std::string line;
 
@@ -186,31 +153,63 @@ std::string SSTable::readWithIndex(
         return "";
     }
 
-    std::size_t separator =
-        line.find('|');
+    const std::size_t separator = line.find('|');
 
-    if (
-        separator ==
-        std::string::npos
-    ) {
+    if (separator == std::string::npos) {
         return "";
     }
 
-    return line.substr(
-        separator + 1
-    );
+    return line.substr(separator + 1);
 }
 
+std::vector<std::pair<std::string, std::string>> SSTable::readAll(
+    const std::string& filePath
+) {
+    std::vector<std::pair<std::string, std::string>> entries;
+
+    std::ifstream file(filePath, std::ios::binary);
+
+    if (!file.is_open()) {
+        std::cerr << "Cannot open SSTable: "
+                  << filePath << '\n';
+        return entries;
+    }
+
+    std::string line;
+
+    while (std::getline(file, line)) {
+        const std::size_t separator = line.find('|');
+
+        // Diagnostic logging: remove after locating the issue.
+        std::cerr << "RAW LINE: [" << line << "]\n";
+
+        if (separator == std::string::npos) {
+            std::cerr << "Invalid SSTable line: missing '|'\n";
+            continue;
+        }
+
+        std::string key = line.substr(0, separator);
+        std::string value = line.substr(separator + 1);
+
+        // Handle CRLF files when reading on Windows.
+        if (!value.empty() && value.back() == '\r') {
+            value.pop_back();
+        }
+
+        std::cerr << "PARSED KEY: [" << key << "]\n";
+        std::cerr << "PARSED VALUE: [" << value << "]\n";
+
+        entries.emplace_back(std::move(key), std::move(value));
+    }
+
+    return entries;
+}
 
 std::string SSTable::read(
     const std::string& key,
     const std::string& filePath
 ) {
-
-    std::ifstream file(
-        filePath,
-        std::ios::binary
-    );
+    std::ifstream file(filePath, std::ios::binary);
 
     if (!file.is_open()) {
         return "";
@@ -218,30 +217,19 @@ std::string SSTable::read(
 
     std::string line;
 
-    while (
-        std::getline(file, line)
-    ) {
+    while (std::getline(file, line)) {
+        const std::size_t separator = line.find('|');
 
-        std::size_t separator =
-            line.find('|');
-
-        if (
-            separator ==
-            std::string::npos
-        ) {
+        if (separator == std::string::npos) {
             continue;
         }
 
-        std::string storedKey =
-            line.substr(
-                0,
-                separator
-            );
+        const std::string storedKey = line.substr(0, separator);
+        std::string storedValue = line.substr(separator + 1);
 
-        std::string storedValue =
-            line.substr(
-                separator + 1
-            );
+        if (!storedValue.empty() && storedValue.back() == '\r') {
+            storedValue.pop_back();
+        }
 
         if (storedKey == key) {
             return storedValue;

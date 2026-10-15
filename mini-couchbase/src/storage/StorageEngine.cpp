@@ -1,13 +1,12 @@
 #include "storage/StorageEngine.h"
-
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <unordered_map>
 #include <vector>
-
-
+#include <functional>
+#include <unordered_set>
 void StorageEngine::discoverSSTables() {
 
     std::vector<
@@ -108,9 +107,10 @@ void StorageEngine::discoverSSTables() {
         discoveredFiles
     ) {
 
-        sstableFiles.push_back(
+       sstableFiles.push_back(
             std::make_shared<SSTableFile>(
-                file.second
+                file.second,
+                file.first
             )
         );
     }
@@ -299,7 +299,8 @@ void StorageEngine::flushMemTableAsync(
                 this,
                 memTable =
                     std::move(memTable),
-                filePath
+                filePath,
+                tableNumber
             ]() mutable {
 
                 bool success =
@@ -325,7 +326,8 @@ void StorageEngine::flushMemTableAsync(
 
                     sstableFiles.push_back(
                         std::make_shared<SSTableFile>(
-                            filePath
+                            filePath,
+                            tableNumber
                         )
                     );
 
@@ -455,6 +457,8 @@ void StorageEngine::put(
     const std::string& key,
     const std::string& value
 ) {
+    std::lock_guard<std::mutex> lock(storageMutex);
+
 
     Request request{
         Operation::PUT,
@@ -608,6 +612,14 @@ void StorageEngine::compact() {
 
         tablesToCompact =
             sstableFiles;
+
+        std::sort(
+            tablesToCompact.begin(),
+            tablesToCompact.end(),
+            [](const auto& a, const auto& b) {
+                return a->generation < b->generation;
+            }
+        );
     }
 
 
@@ -731,10 +743,20 @@ void StorageEngine::compact() {
     output.close();
 
 
-    auto newTable =
-        std::make_shared<SSTableFile>(
-            compactedFilePath
-        );
+    std::size_t compactedGeneration = 0;
+
+for (const auto& table : tablesToCompact) {
+    compactedGeneration = std::max(
+        compactedGeneration,
+        table->generation
+    );
+}
+
+auto newTable =
+    std::make_shared<SSTableFile>(
+        compactedFilePath,
+        compactedGeneration
+    );
 
 
     {
@@ -795,7 +817,20 @@ void StorageEngine::compact() {
 
         sstableFiles =
             std::move(newActiveTables);
-    }
+
+
+        newActiveTables.push_back(newTable);
+
+        std::sort(
+            newActiveTables.begin(),
+            newActiveTables.end(),
+            [](const auto& a, const auto& b) {
+                return a->generation < b->generation;
+            }
+        );
+
+        sstableFiles = std::move(newActiveTables);
+            }
 }
 
 
@@ -829,4 +864,55 @@ void StorageEngine::cleanupRetiredSSTables() {
             ++it;
         }
     }
+}
+
+
+
+
+std::vector<std::pair<std::string, std::string>>
+StorageEngine::scanAll() const {
+    std::unordered_map<std::string, std::string> latest;
+    std::unordered_set<std::string> seenKeys;
+
+    // 1. Read the active MemTable first.
+    for (const auto& [key, value] : activeMemTable->getData()) {
+        seenKeys.insert(key);
+
+        if (value != MemTable::TOMBSTONE) {
+            latest.emplace(key, value);
+        }
+    }
+
+    // 2. Take a snapshot of the current SSTable list.
+    std::vector<std::shared_ptr<SSTableFile>> snapshot;
+
+    {
+        std::lock_guard<std::mutex> lock(sstableMutex);
+        snapshot = sstableFiles;
+    }
+
+    // 3. Read SSTables from newest to oldest.
+    for (auto it = snapshot.rbegin(); it != snapshot.rend(); ++it) {
+        const auto entries = SSTable::readAll((*it)->filePath);
+
+        for (const auto& [key, value] : entries) {
+            if (!seenKeys.insert(key).second) {
+                continue;
+            }
+
+            if (value != MemTable::TOMBSTONE) {
+                latest.emplace(key, value);
+            }
+        }
+    }
+
+    // 4. Convert the merged result into a vector.
+    std::vector<std::pair<std::string, std::string>> result;
+    result.reserve(latest.size());
+
+    for (const auto& entry : latest) {
+        result.push_back(entry);
+    }
+
+    return result;
 }

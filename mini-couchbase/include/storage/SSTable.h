@@ -4,7 +4,8 @@
 #include <ios>
 #include <string>
 #include <unordered_map>
-
+#include <utility>
+#include <vector>
 #include "storage/BloomFilter.h"
 #include "storage/MemTable.h"
 
@@ -30,6 +31,9 @@ public:
         const std::string& filePath
     );
 
+    static std::vector<std::pair<std::string, std::string>> readAll(
+        const std::string& filePath
+    );
 
     static Index buildIndex(
         const std::string& filePath
