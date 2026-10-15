@@ -151,3 +151,21 @@ void PartitionManager::applyCommand(const std::string& command) {
             break;
     }
 }
+
+
+
+QueryResult PartitionManager::executeQuery(
+    const QueryPredicate& predicate
+) {
+    QueryExecutor executor(storageEngine, indexClient);
+
+    // Temporary estimate until we add storage statistics.
+    constexpr std::size_t estimatedDocumentCount = 1000;
+
+    return executor.execute(
+        predicate,
+        estimatedDocumentCount,
+        0.10
+    );
+}
+

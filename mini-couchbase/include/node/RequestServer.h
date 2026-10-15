@@ -9,7 +9,7 @@ public:
     RequestServer(PartitionManager& partitionManager, int partitionCount);
 
     Response handleRequest(const Request& request);
-
+    QueryResult executeQuery(const QueryPredicate& predicate);
 private:
     PartitionManager& partitionManager;
     int partitionCount;

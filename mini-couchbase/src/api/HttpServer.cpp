@@ -1,7 +1,8 @@
 // api/HttpServer.cpp
 
 #include "api/HttpServer.h"
-
+#include "query/QueryExecutor.h"
+#include <nlohmann/json.hpp>
 #include <crow.h>
 #include <iostream>
 #include <fstream>
@@ -76,8 +77,101 @@ Response HttpServer::dispatch(const Request& request) {
 
 void HttpServer::start() {
 
+    
+
     crow::App<CorsMiddleware> app;
 
+
+    
+    
+    // ============================================================
+    // API - QUERY
+    // ============================================================
+
+    CROW_ROUTE(app, "/api/query")
+    .methods(
+        crow::HTTPMethod::POST,
+        crow::HTTPMethod::OPTIONS
+    )
+    ([&](const crow::request& request) {
+        if (request.method == crow::HTTPMethod::OPTIONS) {
+            return crow::response(204);
+        }
+
+        try {
+            const auto body =
+                nlohmann::json::parse(request.body);
+
+            if (!body.is_object() ||
+                !body.contains("field") ||
+                !body["field"].is_string() ||
+                !body.contains("value") ||
+                !body["value"].is_string()) {
+                return crow::response(
+                    400,
+                    "Expected string fields: field and value"
+                );
+            }
+
+            if (servers.empty()) {
+                return crow::response(
+                    503,
+                    "No request server available"
+                );
+            }
+
+            QueryPredicate predicate{
+                body["field"].get<std::string>(),
+                body["value"].get<std::string>()
+            };
+
+            // Execute through the existing request-server layer.
+            QueryResult result =
+                servers.front().get().executeQuery(predicate);
+
+            nlohmann::json response;
+            response["plan"] =
+                result.plan.type == PlanType::IndexScan
+                    ? "IndexScan"
+                    : "FullScan";
+
+            response["index"] = result.plan.indexName;
+            response["estimated_cost"] = result.plan.estimatedCost;
+            response["documents"] = nlohmann::json::array();
+
+            for (const auto& [key, document] : result.documents) {
+                nlohmann::json item;
+                item["key"] = key;
+
+                try {
+                    item["value"] = nlohmann::json::parse(document);
+                } catch (const nlohmann::json::exception&) {
+                    item["value"] = document;
+                }
+
+                response["documents"].push_back(std::move(item));
+            }
+
+            crow::response httpResponse(200, response.dump());
+            httpResponse.set_header(
+                "Content-Type",
+                "application/json"
+            );
+
+            return httpResponse;
+
+        } catch (const nlohmann::json::exception& error) {
+            return crow::response(
+                400,
+                std::string("Invalid query JSON: ") + error.what()
+            );
+        } catch (const std::exception& error) {
+            return crow::response(
+                500,
+                std::string("Query execution failed: ") + error.what()
+            );
+        }
+    });
 
     // ============================================================
     // Frontend UI

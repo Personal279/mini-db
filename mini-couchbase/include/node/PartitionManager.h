@@ -1,7 +1,6 @@
 #pragma once
-
 #include <vector>
-
+#include "query/QueryExecutor.h"
 #include "common/Types.h"
 #include "index/IndexClient.h"
 #include "raft/RaftGroup.h"
@@ -18,6 +17,7 @@ public:
     bool ownsPartition(int partitionId) const;
 
     Response processRequest(const Request& request);
+    QueryResult executeQuery(const QueryPredicate& predicate);
     void applyCommand(const std::string& command);
 
 private:

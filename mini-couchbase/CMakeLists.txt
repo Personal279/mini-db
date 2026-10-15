@@ -9,6 +9,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 include_directories(include)
 
 find_package(Crow CONFIG REQUIRED)
+include_directories(
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/include"
+)
+
 
 # ============================================================
 # Main Mini Couchbase Executable
@@ -56,11 +60,15 @@ add_executable(mini_couchbase
     # Index Client
     src/index/IndexClient.cpp
 
+    src/query/QueryExecutor.cpp
+
     # CLI
     src/cli/CLI.cpp
 
     # HTTP API
     src/api/HttpServer.cpp
+
+    src/query/QueryOptimizer.cpp
 )
 
 target_link_libraries(mini_couchbase PRIVATE Crow::Crow)
@@ -83,6 +91,14 @@ add_executable(mddb_benchmark
 # ============================================================
 # Network Test
 # ============================================================
+
+add_executable(query_optimizer_test
+    tests/query_optimizer_test.cpp
+    src/query/QueryOptimizer.cpp
+)
+target_include_directories(query_optimizer_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+)
 
 add_executable(network_test
     src/network/NetworkTest.cpp
@@ -136,7 +152,27 @@ add_executable(scan_test
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
 )
+add_executable(query_executor_test
+    tests/query_executor_test.cpp
+    src/query/QueryOptimizer.cpp
+    src/query/QueryExecutor.cpp
+    src/index/IndexClient.cpp
+    src/storage/StorageEngine.cpp
+    src/storage/WAL.cpp
+    src/storage/MemTable.cpp
+    src/storage/SSTable.cpp
+    src/storage/BloomFilter.cpp
+)
 
+target_include_directories(query_executor_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/include"
+)
+
+target_link_libraries(query_executor_test PRIVATE
+    ws2_32
+    winhttp
+)
 # ============================================================
 # Compaction Test
 # ============================================================

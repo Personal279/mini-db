@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#ifdef DELETE
+#undef DELETE
+#endif
 
 enum class Operation {
     PUT,

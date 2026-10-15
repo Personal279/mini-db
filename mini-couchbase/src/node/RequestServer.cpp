@@ -29,3 +29,9 @@ Response RequestServer::handleRequest(const Request& request) {
 
     return partitionManager.processRequest(request);
 }
+
+QueryResult RequestServer::executeQuery(
+    const QueryPredicate& predicate
+) {
+    return partitionManager.executeQuery(predicate);
+}
