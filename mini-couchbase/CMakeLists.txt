@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.16)
 
 project(mini_couchbase)
@@ -54,6 +53,9 @@ add_executable(mini_couchbase
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
 
+    # Index Client
+    src/index/IndexClient.cpp
+
     # CLI
     src/cli/CLI.cpp
 
@@ -107,7 +109,6 @@ add_executable(raft_test
     src/raft/RaftGroup.cpp
     src/raft/RequestVote.cpp
     src/raft/ElectionManager.cpp
-    src/raft/RaftNetwork.cpp
     src/raft/AppendEntries.cpp
 
     # Node
@@ -152,13 +153,25 @@ add_executable(compaction_test
 )
 
 # ============================================================
+# Index Client Test
+# ============================================================
+
+add_executable(index_client_test
+    tests/index_client_test.cpp
+    src/index/IndexClient.cpp
+)
+
+target_include_directories(index_client_test PRIVATE include)
+
+# ============================================================
 # Windows Libraries
 # ============================================================
 
 if(WIN32)
-    target_link_libraries(mini_couchbase PRIVATE ws2_32)
+    target_link_libraries(mini_couchbase PRIVATE ws2_32 winhttp)
     target_link_libraries(network_test PRIVATE ws2_32)
     target_link_libraries(raft_test PRIVATE ws2_32)
+    target_link_libraries(index_client_test PRIVATE winhttp)
 endif()
 
 # ============================================================

@@ -1,4 +1,3 @@
-// node/PartitionManager.cpp
 #include "node/PartitionManager.h"
 
 #include <iostream>
@@ -9,7 +8,8 @@ PartitionManager::PartitionManager(
     RaftGroup& raftGroup
 )
     : storageEngine(storageEngine),
-      raftGroup(raftGroup) {
+      raftGroup(raftGroup),
+      indexClient() {
 }
 
 void PartitionManager::addPartition(int partitionId) {
@@ -27,26 +27,29 @@ bool PartitionManager::ownsPartition(int partitionId) const {
 
 Response PartitionManager::processRequest(const Request& request) {
     switch (request.operation) {
-
         case Operation::PUT:
         case Operation::DELETE:
-
             if (raftGroup.getRole() != RaftRole::LEADER) {
-                std::cout << "Request rejected: this node is not the Raft leader" << std::endl;
-                return { false, false, "", "Not leader" };
+                std::cout
+                    << "Request rejected: this node is not the Raft leader"
+                    << std::endl;
+
+                return {false, false, "", "Not leader"};
             }
 
             appendWriteCommand(request);
-            return { true, true, "", "Accepted" };
+            return {true, true, "", "Accepted"};
 
         case Operation::GET: {
             std::string value = storageEngine.get(request.key);
+
             std::cout << "GET result: " << value << std::endl;
-            return { true, true, value, "OK" };
+
+            return {true, true, value, "OK"};
         }
     }
 
-    return { false, false, "", "Unknown operation" };
+    return {false, false, "", "Unknown operation"};
 }
 
 void PartitionManager::appendWriteCommand(const Request& request) {
@@ -58,17 +61,20 @@ void PartitionManager::appendWriteCommand(const Request& request) {
         operation = "DELETE";
     }
 
-    std::string command = operation + "|" + request.key + "|" + request.value;
+    std::string command =
+        operation + "|" + request.key + "|" + request.value;
 
     int index = raftGroup.getLog().getLastIndex() + 1;
     int term = raftGroup.getCurrentTerm();
 
-    LogEntry entry{ term, index, command };
+    LogEntry entry{term, index, command};
 
     raftGroup.getLog().append(entry);
 
     std::cout << "Raft log appended: " << command
-               << " [term=" << term << ", index=" << index << "]" << std::endl;
+              << " [term=" << term
+              << ", index=" << index << "]"
+              << std::endl;
 }
 
 void PartitionManager::applyCommand(const std::string& command) {
@@ -96,15 +102,49 @@ void PartitionManager::applyCommand(const std::string& command) {
     request.value = value;
 
     switch (request.operation) {
-
         case Operation::PUT:
             storageEngine.put(request.key, request.value);
-            std::cout << "Committed PUT applied: " << request.key << std::endl;
+
+            try {
+                indexClient.upsertDocument(
+                    request.key,
+                    request.value
+                );
+
+                std::cout
+                    << "Index synchronized for PUT: "
+                    << request.key << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr
+                    << "Index synchronization failed for PUT "
+                    << request.key << ": "
+                    << e.what() << std::endl;
+            }
+
+            std::cout
+                << "Committed PUT applied: "
+                << request.key << std::endl;
             break;
 
         case Operation::DELETE:
             storageEngine.remove(request.key);
-            std::cout << "Committed DELETE applied: " << request.key << std::endl;
+
+            try {
+                indexClient.deleteDocument(request.key);
+
+                std::cout
+                    << "Index synchronized for DELETE: "
+                    << request.key << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr
+                    << "Index synchronization failed for DELETE "
+                    << request.key << ": "
+                    << e.what() << std::endl;
+            }
+
+            std::cout
+                << "Committed DELETE applied: "
+                << request.key << std::endl;
             break;
 
         case Operation::GET:
