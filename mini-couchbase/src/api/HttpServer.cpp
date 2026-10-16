@@ -8,6 +8,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <utility>
+#include <exception>
 
 struct CorsMiddleware {
 
@@ -43,35 +45,32 @@ struct CorsMiddleware {
     }
 };
 
-
 HttpServer::HttpServer(
-    std::vector<std::reference_wrapper<RequestServer>> servers
+    std::vector<std::reference_wrapper<RequestServer>> servers,
+    RoutingService& routingService,
+    std::vector<Node> nodes
 )
-    : servers(std::move(servers)) {}
-
+    : servers(std::move(servers)),
+      routingService(routingService),
+      nodes(std::move(nodes)) {}
 
 Response HttpServer::dispatch(const Request& request) {
+    try {
+        const int leaderNodeId = routingService.route(request);
 
-    Response last{
-        false,
-        false,
-        "",
-        "No node available"
-    };
-
-    for (auto& serverRef : servers) {
-
-        Response response =
-            serverRef.get().handleRequest(request);
-
-        if (response.success) {
-            return response;
+        for (std::size_t i = 0; i < nodes.size(); ++i) {
+            if (nodes[i].getId() == leaderNodeId) {
+                if (i < servers.size()) {
+                    return servers[i].get().handleRequest(request);
+                }
+                break;
+            }
         }
 
-        last = response;
+        return {false, false, "", "Leader request server not found"};
+    } catch (const std::exception& e) {
+        return {false, false, "", e.what()};
     }
-
-    return last;
 }
 
 

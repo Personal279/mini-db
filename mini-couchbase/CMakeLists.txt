@@ -1,4 +1,3 @@
-
 cmake_minimum_required(VERSION 3.16)
 
 project(mini_couchbase)
@@ -116,6 +115,7 @@ target_include_directories(query_optimizer_test PRIVATE
 
 # ============================================================
 # Network Test
+# Requires command-line arguments; run manually.
 # ============================================================
 
 add_executable(network_test
@@ -128,6 +128,7 @@ add_executable(network_test
 
 # ============================================================
 # Raft Test
+# Requires a node ID; run manually.
 # ============================================================
 
 add_executable(raft_test
@@ -177,6 +178,40 @@ add_executable(scan_test
     src/storage/StorageEngine.cpp
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
+)
+
+# ============================================================
+# Partition Manager Test
+# ============================================================
+
+add_executable(partition_manager_test
+    tests/partition_manager_test.cpp
+
+    # Node
+    src/node/PartitionManager.cpp
+
+    # Raft
+    src/raft/RaftGroup.cpp
+    src/raft/RaftLog.cpp
+
+    # Index Client
+    src/index/IndexClient.cpp
+
+    # Query
+    src/query/QueryExecutor.cpp
+    src/query/QueryOptimizer.cpp
+
+    # Storage
+    src/storage/StorageEngine.cpp
+    src/storage/WAL.cpp
+    src/storage/MemTable.cpp
+    src/storage/SSTable.cpp
+    src/storage/BloomFilter.cpp
+)
+
+target_include_directories(partition_manager_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/include"
 )
 
 # ============================================================
@@ -236,6 +271,27 @@ target_include_directories(index_client_test PRIVATE
 )
 
 # ============================================================
+# Routing Service Test
+# ============================================================
+
+add_executable(RoutingService_test
+    tests/RoutingService_test.cpp
+
+    # Cluster
+    src/cluster/Node.cpp
+    src/cluster/Partition.cpp
+    src/cluster/ClusterMetadata.cpp
+
+    # Router
+    src/router/PartitionRouter.cpp
+    src/router/RoutingService.cpp
+)
+
+target_include_directories(RoutingService_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+)
+
+# ============================================================
 # Windows Libraries
 # ============================================================
 
@@ -254,6 +310,11 @@ if(WIN32)
         winhttp
     )
 
+    target_link_libraries(partition_manager_test PRIVATE
+        ws2_32
+        winhttp
+    )
+
     target_link_libraries(index_client_test PRIVATE
         winhttp
     )
@@ -265,40 +326,51 @@ if(WIN32)
 endif()
 
 # ============================================================
-# Register Tests with CTest
+# Register Automated Tests with CTest
 # ============================================================
 
-add_test(NAME Codec_test
+add_test(
+    NAME Codec_test
     COMMAND $<TARGET_FILE:Codec_test>
 )
 
-add_test(NAME compaction_test
+add_test(
+    NAME compaction_test
     COMMAND $<TARGET_FILE:compaction_test>
 )
 
-add_test(NAME index_client_test
+add_test(
+    NAME index_client_test
     COMMAND $<TARGET_FILE:index_client_test>
 )
 
-add_test(NAME network_test
-    COMMAND $<TARGET_FILE:network_test>
+add_test(
+    NAME partition_manager_test
+    COMMAND $<TARGET_FILE:partition_manager_test>
 )
 
-add_test(NAME query_executor_test
+add_test(
+    NAME query_executor_test
     COMMAND $<TARGET_FILE:query_executor_test>
 )
 
-add_test(NAME query_optimizer_test
+add_test(
+    NAME query_optimizer_test
     COMMAND $<TARGET_FILE:query_optimizer_test>
 )
 
-add_test(NAME raft_test
-    COMMAND $<TARGET_FILE:raft_test>
-)
-
-add_test(NAME scan_test
+add_test(
+    NAME scan_test
     COMMAND $<TARGET_FILE:scan_test>
 )
+
+add_test(
+    NAME RoutingService_test
+    COMMAND $<TARGET_FILE:RoutingService_test>
+)
+
+# network_test and raft_test are intentionally not registered here
+# because they require command-line arguments or process orchestration.
 
 # ============================================================
 # Installation

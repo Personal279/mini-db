@@ -1,18 +1,20 @@
-// node/RequestServer.h
 #pragma once
 
 #include "common/Types.h"
 #include "node/PartitionManager.h"
+#include "router/PartitionRouter.h"
 
 class RequestServer {
 public:
-    RequestServer(PartitionManager& partitionManager, int partitionCount);
+    RequestServer(
+        PartitionManager& partitionManager,
+        PartitionRouter& partitionRouter
+    );
 
     Response handleRequest(const Request& request);
     QueryResult executeQuery(const QueryPredicate& predicate);
+
 private:
     PartitionManager& partitionManager;
-    int partitionCount;
-
-    int findPartition(const std::string& key) const;
+    PartitionRouter& partitionRouter;
 };

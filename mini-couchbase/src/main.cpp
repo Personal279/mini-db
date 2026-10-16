@@ -82,9 +82,9 @@ int main() {
     RaftReplicationManager replicationManagerB(raftGroupB, raftNetworkB, partitionManagerB);
     RaftReplicationManager replicationManagerC(raftGroupC, raftNetworkC, partitionManagerC);
 
-    RequestServer serverA(partitionManagerA, partitionCount);
-    RequestServer serverB(partitionManagerB, partitionCount);
-    RequestServer serverC(partitionManagerC, partitionCount);
+    RequestServer serverA(partitionManagerA, partitionRouter);
+    RequestServer serverB(partitionManagerB, partitionRouter);
+    RequestServer serverC(partitionManagerC, partitionRouter);
 
     Client client;
 
@@ -106,11 +106,15 @@ int main() {
     std::cout << "HTTP API running on:" << std::endl;
     std::cout << "http://localhost:8080" << std::endl;
 
-    HttpServer httpServer({
-        std::ref(serverA),
-        std::ref(serverB),
-        std::ref(serverC)
-    });
+    HttpServer httpServer(
+        {
+            std::ref(serverA),
+            std::ref(serverB),
+            std::ref(serverC)
+        },
+        routingService,
+        {nodeA, nodeB, nodeC}
+    );
 
     httpServer.start();
 
