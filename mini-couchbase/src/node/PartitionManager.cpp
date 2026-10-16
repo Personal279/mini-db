@@ -1,7 +1,9 @@
 #include "node/PartitionManager.h"
 
+#include <chrono>
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 PartitionManager::PartitionManager(
     StorageEngine& storageEngine,
@@ -28,7 +30,7 @@ bool PartitionManager::ownsPartition(int partitionId) const {
 Response PartitionManager::processRequest(const Request& request) {
     switch (request.operation) {
         case Operation::PUT:
-        case Operation::DELETE:
+        case Operation::DELETE: {
             if (raftGroup.getRole() != RaftRole::LEADER) {
                 std::cout
                     << "Request rejected: this node is not the Raft leader"
@@ -37,10 +39,41 @@ Response PartitionManager::processRequest(const Request& request) {
                 return {false, false, "", "Not leader"};
             }
 
-            appendWriteCommand(request);
+            int index = appendWriteCommand(request);
+
+            // Do not acknowledge until the entry is committed AND applied,
+            // so a following GET sees it. lastApplied is only advanced after
+            // applyCommand() has finished.
+            const auto deadline =
+                std::chrono::steady_clock::now() +
+                std::chrono::seconds(2);
+
+            while (raftGroup.getLastApplied() < index) {
+                if (raftGroup.getRole() != RaftRole::LEADER) {
+                    return {false, false, "",
+                            "Leadership lost before commit"};
+                }
+
+                if (std::chrono::steady_clock::now() >= deadline) {
+                    return {false, false, "", "Commit timeout"};
+                }
+
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(5)
+                );
+            }
+
             return {true, true, "", "Accepted"};
+        }
 
         case Operation::GET: {
+            // Serve reads from the leader only. A follower learns the commit
+            // index one heartbeat late, so it can return an empty/stale value
+            // right after the leader acknowledged a PUT.
+            if (raftGroup.getRole() != RaftRole::LEADER) {
+                return {false, false, "", "Not leader"};
+            }
+
             std::string value = storageEngine.get(request.key);
 
             std::cout << "GET result: " << value << std::endl;
@@ -52,7 +85,7 @@ Response PartitionManager::processRequest(const Request& request) {
     return {false, false, "", "Unknown operation"};
 }
 
-void PartitionManager::appendWriteCommand(const Request& request) {
+int PartitionManager::appendWriteCommand(const Request& request) {
     std::string operation;
 
     if (request.operation == Operation::PUT) {
@@ -75,6 +108,8 @@ void PartitionManager::appendWriteCommand(const Request& request) {
               << " [term=" << term
               << ", index=" << index << "]"
               << std::endl;
+
+    return index;
 }
 
 void PartitionManager::applyCommand(const std::string& command) {
@@ -168,4 +203,3 @@ QueryResult PartitionManager::executeQuery(
         0.10
     );
 }
-

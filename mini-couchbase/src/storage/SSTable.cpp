@@ -8,11 +8,23 @@
 #include <utility>
 #include <vector>
 
+// Remove a trailing carriage return when reading CRLF-formatted lines.
+namespace {
+void removeTrailingCarriageReturn(std::string& line) {
+    if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+    }
+}
+}
+
 bool SSTable::write(
     const MemTable& memTable,
     const std::string& filePath
 ) {
-    std::ofstream file(filePath, std::ios::binary | std::ios::trunc);
+    std::ofstream file(
+        filePath,
+        std::ios::binary | std::ios::trunc
+    );
 
     if (!file.is_open()) {
         std::cerr << "Failed to open SSTable for writing: "
@@ -77,6 +89,8 @@ SSTable::Index SSTable::buildIndex(
             break;
         }
 
+        removeTrailingCarriageReturn(line);
+
         const std::size_t separator = line.find('|');
 
         if (separator == std::string::npos) {
@@ -107,6 +121,8 @@ BloomFilter SSTable::buildBloomFilter(
     std::string line;
 
     while (std::getline(file, line)) {
+        removeTrailingCarriageReturn(line);
+
         const std::size_t separator = line.find('|');
 
         if (separator == std::string::npos) {
@@ -153,6 +169,8 @@ std::string SSTable::readWithIndex(
         return "";
     }
 
+    removeTrailingCarriageReturn(line);
+
     const std::size_t separator = line.find('|');
 
     if (separator == std::string::npos) {
@@ -178,10 +196,9 @@ std::vector<std::pair<std::string, std::string>> SSTable::readAll(
     std::string line;
 
     while (std::getline(file, line)) {
-        const std::size_t separator = line.find('|');
+        removeTrailingCarriageReturn(line);
 
-        // Diagnostic logging: remove after locating the issue.
-        std::cerr << "RAW LINE: [" << line << "]\n";
+        const std::size_t separator = line.find('|');
 
         if (separator == std::string::npos) {
             std::cerr << "Invalid SSTable line: missing '|'\n";
@@ -190,14 +207,6 @@ std::vector<std::pair<std::string, std::string>> SSTable::readAll(
 
         std::string key = line.substr(0, separator);
         std::string value = line.substr(separator + 1);
-
-        // Handle CRLF files when reading on Windows.
-        if (!value.empty() && value.back() == '\r') {
-            value.pop_back();
-        }
-
-        std::cerr << "PARSED KEY: [" << key << "]\n";
-        std::cerr << "PARSED VALUE: [" << value << "]\n";
 
         entries.emplace_back(std::move(key), std::move(value));
     }
@@ -218,6 +227,8 @@ std::string SSTable::read(
     std::string line;
 
     while (std::getline(file, line)) {
+        removeTrailingCarriageReturn(line);
+
         const std::size_t separator = line.find('|');
 
         if (separator == std::string::npos) {
@@ -225,11 +236,7 @@ std::string SSTable::read(
         }
 
         const std::string storedKey = line.substr(0, separator);
-        std::string storedValue = line.substr(separator + 1);
-
-        if (!storedValue.empty() && storedValue.back() == '\r') {
-            storedValue.pop_back();
-        }
+        const std::string storedValue = line.substr(separator + 1);
 
         if (storedKey == key) {
             return storedValue;

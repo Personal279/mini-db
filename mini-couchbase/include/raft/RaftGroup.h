@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <unordered_map>
 #include <vector>
 
@@ -69,17 +70,20 @@ private:
 
     std::vector<int> peerNodeIds;
 
-    int currentTerm;
+    // Read by the HTTP thread, written by replication/election/RPC threads.
+    std::atomic<int> currentTerm;
 
     int votedFor;
 
-    RaftRole role;
+    std::atomic<RaftRole> role;
 
     RaftLog raftLog;
 
-    int commitIndex;
+    std::atomic<int> commitIndex;
 
-    int lastApplied;
+    // Written by the replication thread after a command is applied;
+    // polled by the HTTP thread to know when a write is visible.
+    std::atomic<int> lastApplied;
 
     std::unordered_map<int, int> nextIndex;
 

@@ -77,13 +77,13 @@ Response HttpServer::dispatch(const Request& request) {
 
 void HttpServer::start() {
 
-    
+
 
     crow::App<CorsMiddleware> app;
 
 
-    
-    
+
+
     // ============================================================
     // API - QUERY
     // ============================================================
@@ -346,6 +346,18 @@ void HttpServer::start() {
         req.key = key;
 
         Response result = dispatch(req);
+
+        // No leader answered (for example during an election). Report it
+        // instead of returning an empty value with HTTP 200.
+        if (!result.success) {
+            crow::json::wvalue error;
+
+            error["status"] = "ERROR";
+            error["message"] = result.message;
+            error["key"] = std::string(key);
+
+            return crow::response(503, error);
+        }
 
         crow::json::wvalue response;
 

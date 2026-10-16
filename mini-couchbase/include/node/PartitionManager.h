@@ -26,5 +26,5 @@ private:
     IndexClient indexClient;
     std::vector<int> partitions;
 
-    void appendWriteCommand(const Request& request);
+    int appendWriteCommand(const Request& request);
 };

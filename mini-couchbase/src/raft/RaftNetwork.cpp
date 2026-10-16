@@ -251,6 +251,10 @@ RaftNetwork::decodeVoteResponse(
     };
 }
 
+// Wire format:
+//   term|leaderId|prevLogIndex|prevLogTerm|leaderCommit|count
+//   then, per entry: |term|index|commandLength|command
+// The command is length-prefixed because it contains '|' (PUT|key|value).
 std::string RaftNetwork::encodeAppendEntries(
     const AppendEntriesRequest& request
 ) const {
@@ -275,6 +279,8 @@ std::string RaftNetwork::encodeAppendEntries(
             << entry.term
             << "|"
             << entry.index
+            << "|"
+            << entry.command.size()
             << "|"
             << entry.command;
     }
@@ -357,7 +363,7 @@ RaftNetwork::decodeAppendEntries(
 
         std::string entryTerm;
         std::string entryIndex;
-        std::string command;
+        std::string commandLength;
 
         std::getline(
             stream,
@@ -371,23 +377,40 @@ RaftNetwork::decodeAppendEntries(
             '|'
         );
 
+        std::getline(
+            stream,
+            commandLength,
+            '|'
+        );
+
+        std::size_t length =
+            std::stoul(commandLength);
+
+        std::string command(
+            length,
+            '\0'
+        );
+
+        stream.read(
+            &command[0],
+            static_cast<std::streamsize>(length)
+        );
+
         if (
-            i + 1 ==
-            entryCount
+            static_cast<std::size_t>(
+                stream.gcount()
+            ) != length
         ) {
 
-            std::getline(
-                stream,
-                command
+            throw std::runtime_error(
+                "AppendEntries payload truncated"
             );
+        }
 
-        } else {
+        if (i + 1 < entryCount) {
 
-            std::getline(
-                stream,
-                command,
-                '|'
-            );
+            // '|' separating this entry from the next one
+            stream.ignore(1);
         }
 
         entries.push_back({

@@ -1,3 +1,4 @@
+
 cmake_minimum_required(VERSION 3.16)
 
 project(mini_couchbase)
@@ -6,13 +7,15 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+enable_testing()
+
 include_directories(include)
 
 find_package(Crow CONFIG REQUIRED)
+
 include_directories(
     "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/include"
 )
-
 
 # ============================================================
 # Main Mini Couchbase Executable
@@ -60,18 +63,28 @@ add_executable(mini_couchbase
     # Index Client
     src/index/IndexClient.cpp
 
+    # Query
     src/query/QueryExecutor.cpp
+    src/query/QueryOptimizer.cpp
 
     # CLI
     src/cli/CLI.cpp
 
     # HTTP API
     src/api/HttpServer.cpp
-
-    src/query/QueryOptimizer.cpp
 )
 
-target_link_libraries(mini_couchbase PRIVATE Crow::Crow)
+target_link_libraries(mini_couchbase PRIVATE
+    Crow::Crow
+)
+
+# ============================================================
+# Codec Test
+# ============================================================
+
+add_executable(Codec_test
+    tests/Codec_test.cpp
+)
 
 # ============================================================
 # Benchmark
@@ -89,16 +102,21 @@ add_executable(mddb_benchmark
 )
 
 # ============================================================
-# Network Test
+# Query Optimizer Test
 # ============================================================
 
 add_executable(query_optimizer_test
     tests/query_optimizer_test.cpp
     src/query/QueryOptimizer.cpp
 )
+
 target_include_directories(query_optimizer_test PRIVATE
     "${CMAKE_SOURCE_DIR}/include"
 )
+
+# ============================================================
+# Network Test
+# ============================================================
 
 add_executable(network_test
     src/network/NetworkTest.cpp
@@ -121,6 +139,7 @@ add_executable(raft_test
 
     # Raft
     src/raft/RaftLog.cpp
+    src/raft/RaftNetwork.cpp
     src/raft/RaftReplicationManager.cpp
     src/raft/RaftGroup.cpp
     src/raft/RequestVote.cpp
@@ -129,6 +148,13 @@ add_executable(raft_test
 
     # Node
     src/node/PartitionManager.cpp
+
+    # Index Client
+    src/index/IndexClient.cpp
+
+    # Query
+    src/query/QueryExecutor.cpp
+    src/query/QueryOptimizer.cpp
 
     # Storage
     src/storage/MemTable.cpp
@@ -152,11 +178,23 @@ add_executable(scan_test
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
 )
+
+# ============================================================
+# Query Executor Test
+# Index Scan vs Full Scan
+# ============================================================
+
 add_executable(query_executor_test
     tests/query_executor_test.cpp
+
+    # Query
     src/query/QueryOptimizer.cpp
     src/query/QueryExecutor.cpp
+
+    # Index Client
     src/index/IndexClient.cpp
+
+    # Storage
     src/storage/StorageEngine.cpp
     src/storage/WAL.cpp
     src/storage/MemTable.cpp
@@ -169,10 +207,6 @@ target_include_directories(query_executor_test PRIVATE
     "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/include"
 )
 
-target_link_libraries(query_executor_test PRIVATE
-    ws2_32
-    winhttp
-)
 # ============================================================
 # Compaction Test
 # ============================================================
@@ -197,18 +231,74 @@ add_executable(index_client_test
     src/index/IndexClient.cpp
 )
 
-target_include_directories(index_client_test PRIVATE include)
+target_include_directories(index_client_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+)
 
 # ============================================================
 # Windows Libraries
 # ============================================================
 
 if(WIN32)
-    target_link_libraries(mini_couchbase PRIVATE ws2_32 winhttp)
-    target_link_libraries(network_test PRIVATE ws2_32)
-    target_link_libraries(raft_test PRIVATE ws2_32)
-    target_link_libraries(index_client_test PRIVATE winhttp)
+    target_link_libraries(mini_couchbase PRIVATE
+        ws2_32
+        winhttp
+    )
+
+    target_link_libraries(network_test PRIVATE
+        ws2_32
+    )
+
+    target_link_libraries(raft_test PRIVATE
+        ws2_32
+        winhttp
+    )
+
+    target_link_libraries(index_client_test PRIVATE
+        winhttp
+    )
+
+    target_link_libraries(query_executor_test PRIVATE
+        ws2_32
+        winhttp
+    )
 endif()
+
+# ============================================================
+# Register Tests with CTest
+# ============================================================
+
+add_test(NAME Codec_test
+    COMMAND $<TARGET_FILE:Codec_test>
+)
+
+add_test(NAME compaction_test
+    COMMAND $<TARGET_FILE:compaction_test>
+)
+
+add_test(NAME index_client_test
+    COMMAND $<TARGET_FILE:index_client_test>
+)
+
+add_test(NAME network_test
+    COMMAND $<TARGET_FILE:network_test>
+)
+
+add_test(NAME query_executor_test
+    COMMAND $<TARGET_FILE:query_executor_test>
+)
+
+add_test(NAME query_optimizer_test
+    COMMAND $<TARGET_FILE:query_optimizer_test>
+)
+
+add_test(NAME raft_test
+    COMMAND $<TARGET_FILE:raft_test>
+)
+
+add_test(NAME scan_test
+    COMMAND $<TARGET_FILE:scan_test>
+)
 
 # ============================================================
 # Installation

@@ -1,6 +1,6 @@
-
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <iomanip>
@@ -29,16 +29,25 @@ struct BenchmarkResult {
     double throughput = 0.0;
 };
 
+// Nearest-rank percentile on an already sorted vector.
 double percentile(const std::vector<double>& sorted, double p) {
     if (sorted.empty()) {
         return 0.0;
     }
 
-    const auto index = static_cast<std::size_t>(
-        p * static_cast<double>(sorted.size() - 1)
+    std::size_t rank = static_cast<std::size_t>(
+        std::ceil(p * static_cast<double>(sorted.size()))
     );
 
-    return sorted[index];
+    if (rank < 1) {
+        rank = 1;
+    }
+
+    if (rank > sorted.size()) {
+        rank = sorted.size();
+    }
+
+    return sorted[rank - 1];
 }
 
 BenchmarkResult summarize(
@@ -55,14 +64,16 @@ BenchmarkResult summarize(
         return result;
     }
 
+    const double count = static_cast<double>(latencies.size());
+
     double totalUs = 0.0;
 
     for (double latency : latencies) {
         totalUs += latency;
     }
 
-    result.averageUs = totalUs / latencies.size();
-    result.throughput = latencies.size() / elapsedSeconds;
+    result.averageUs = totalUs / count;
+    result.throughput = count / elapsedSeconds;
 
     std::sort(latencies.begin(), latencies.end());
 
@@ -85,11 +96,14 @@ void printResult(const BenchmarkResult& result) {
               << "P99 latency:      " << result.p99Us << " us\n";
 }
 
-template <typename Operation>
+// Times only operation(i). Callers must prepare all inputs beforehand and
+// validate all outputs afterwards, so string building and checking are not
+// counted as storage latency.
+template <typename Func>
 BenchmarkResult runBenchmark(
     const std::string& name,
     std::size_t count,
-    Operation operation
+    Func operation
 ) {
     std::vector<double> latencies;
     latencies.reserve(count);
@@ -120,7 +134,8 @@ BenchmarkResult runBenchmark(
 
 int main() {
     try {
-        // This directory must contain benchmark data only.
+        // This directory contains benchmark data only. It is wiped on
+        // every run, so the absolute path is printed below.
         const std::filesystem::path root = "benchmark_data";
 
         std::filesystem::remove_all(root);
@@ -131,8 +146,32 @@ int main() {
                   << "       MDDB STORAGE ENGINE BENCHMARK\n"
                   << "========================================\n"
                   << "Operations per phase: " << OPERATIONS << '\n'
-                  << "Scan iterations:      " << SCAN_ITERATIONS << '\n';
+                  << "Scan iterations:      " << SCAN_ITERATIONS << '\n'
+                  << "Data directory:       "
+                  << std::filesystem::absolute(root).string() << '\n';
 
+        // Build every key and value up front (outside all timed regions).
+        std::vector<std::string> keys;
+        std::vector<std::string> missingKeys;
+        std::vector<std::string> insertValues;
+        std::vector<std::string> updatedValues;
+
+        keys.reserve(OPERATIONS);
+        missingKeys.reserve(OPERATIONS);
+        insertValues.reserve(OPERATIONS);
+        updatedValues.reserve(OPERATIONS);
+
+        for (std::size_t i = 0; i < OPERATIONS; ++i) {
+            const std::string id = std::to_string(i);
+
+            keys.push_back("key:" + id);
+            missingKeys.push_back("missing:" + id);
+            insertValues.push_back("value:" + id);
+            updatedValues.push_back("updated:" + id);
+        }
+
+        // Third argument: same constructor parameter that main.cpp passes
+        // as 3. Keep it fixed so runs are comparable.
         StorageEngine storage(
             (root / "wal.log").string(),
             (root / "data").string(),
@@ -144,110 +183,113 @@ int main() {
             "PUT - INSERT",
             OPERATIONS,
             [&](std::size_t i) {
-                const std::string key = "key:" + std::to_string(i);
-                const std::string value = "value:" + std::to_string(i);
-
-                storage.put(key, value);
+                storage.put(keys[i], insertValues[i]);
             }
         ));
 
-        // 2. GET hit: read existing keys and validate values.
-        printResult(runBenchmark(
-            "GET - EXISTING KEYS",
-            OPERATIONS,
-            [&](std::size_t i) {
-                const std::string key = "key:" + std::to_string(i);
-                const std::string expected =
-                    "value:" + std::to_string(i);
+        // 2. GET: read existing keys. Results are validated afterwards.
+        {
+            std::vector<std::string> results(OPERATIONS);
 
-                const std::string actual = storage.get(key);
+            printResult(runBenchmark(
+                "GET - EXISTING KEYS",
+                OPERATIONS,
+                [&](std::size_t i) {
+                    results[i] = storage.get(keys[i]);
+                }
+            ));
 
-                if (actual != expected) {
+            for (std::size_t i = 0; i < OPERATIONS; ++i) {
+                if (results[i] != insertValues[i]) {
                     throw std::runtime_error(
-                        "GET validation failed for " + key
+                        "GET validation failed for " + keys[i] +
+                        ": expected [" + insertValues[i] +
+                        "], got [" + results[i] + "]"
                     );
                 }
             }
-        ));
+        }
 
         // 3. GET miss: read keys that were never inserted.
-        printResult(runBenchmark(
-            "GET - MISSING KEYS",
-            OPERATIONS,
-            [&](std::size_t i) {
-                const std::string key =
-                    "missing:" + std::to_string(i);
+        {
+            std::vector<std::string> results(OPERATIONS);
 
-                const std::string actual = storage.get(key);
+            printResult(runBenchmark(
+                "GET - MISSING KEYS",
+                OPERATIONS,
+                [&](std::size_t i) {
+                    results[i] = storage.get(missingKeys[i]);
+                }
+            ));
 
-                if (!actual.empty()) {
+            for (std::size_t i = 0; i < OPERATIONS; ++i) {
+                if (!results[i].empty()) {
                     throw std::runtime_error(
-                        "Missing-key GET returned a value for " + key
+                        "Missing-key GET returned a value for " +
+                        missingKeys[i]
                     );
                 }
             }
-        ));
+        }
 
-        // 4. UPDATE: overwrite existing keys using put().
+        // 4. UPDATE: overwrite existing keys.
         printResult(runBenchmark(
             "UPDATE - OVERWRITE",
             OPERATIONS,
             [&](std::size_t i) {
-                const std::string key = "key:" + std::to_string(i);
-                const std::string value =
-                    "updated:" + std::to_string(i);
-
-                storage.put(key, value);
+                storage.put(keys[i], updatedValues[i]);
             }
         ));
 
-        // Verify the updated values outside the timed update phase.
+        // Validate updated values outside the timed update phase.
         for (std::size_t i = 0; i < OPERATIONS; ++i) {
-            const std::string key = "key:" + std::to_string(i);
-            const std::string expected =
-                "updated:" + std::to_string(i);
-
-            if (storage.get(key) != expected) {
+            if (storage.get(keys[i]) != updatedValues[i]) {
                 throw std::runtime_error(
-                    "UPDATE validation failed for " + key
+                    "UPDATE validation failed for " + keys[i]
                 );
             }
         }
 
         std::cout << "\nUpdate validation passed.\n";
 
-        // 5. SCAN ALL: measure complete scans of the stored documents.
-        printResult(runBenchmark(
-            "SCAN ALL",
-            SCAN_ITERATIONS,
-            [&](std::size_t) {
-                const auto documents = storage.scanAll();
+        // 5. SCAN ALL: measure complete scans. Document counts are checked
+        //    after the timed phase.
+        {
+            std::vector<std::size_t> counts(SCAN_ITERATIONS, 0);
 
-                if (documents.size() != OPERATIONS) {
+            printResult(runBenchmark(
+                "SCAN ALL",
+                SCAN_ITERATIONS,
+                [&](std::size_t iteration) {
+                    const auto documents = storage.scanAll();
+                    counts[iteration] = documents.size();
+                }
+            ));
+
+            for (std::size_t count : counts) {
+                if (count != OPERATIONS) {
                     throw std::runtime_error(
-                        "SCAN ALL returned an unexpected document count"
+                        "SCAN ALL returned an unexpected document count: " +
+                        std::to_string(count)
                     );
                 }
             }
-        ));
+        }
 
         // 6. DELETE: delete each existing key.
         printResult(runBenchmark(
             "DELETE",
             OPERATIONS,
             [&](std::size_t i) {
-                const std::string key = "key:" + std::to_string(i);
-                storage.remove(key);
+                storage.remove(keys[i]);
             }
         ));
 
         // Verify deletes outside the timed phase.
         for (std::size_t i = 0; i < OPERATIONS; ++i) {
-            const std::string key = "key:" + std::to_string(i);
-
-            if (!storage.get(key).empty()) {
+            if (!storage.get(keys[i]).empty()) {
                 throw std::runtime_error(
-                    "DELETE validation failed for " + key
+                    "DELETE validation failed for " + keys[i]
                 );
             }
         }
@@ -255,19 +297,27 @@ int main() {
         std::cout << "\nDelete validation passed.\n";
 
         // 7. SCAN ALL after deletes.
-        printResult(runBenchmark(
-            "SCAN ALL - AFTER DELETE",
-            SCAN_ITERATIONS,
-            [&](std::size_t) {
-                const auto documents = storage.scanAll();
+        {
+            std::vector<std::size_t> counts(SCAN_ITERATIONS, 0);
 
-                if (!documents.empty()) {
+            printResult(runBenchmark(
+                "SCAN ALL - AFTER DELETE",
+                SCAN_ITERATIONS,
+                [&](std::size_t iteration) {
+                    const auto documents = storage.scanAll();
+                    counts[iteration] = documents.size();
+                }
+            ));
+
+            for (std::size_t count : counts) {
+                if (count != 0) {
                     throw std::runtime_error(
-                        "SCAN ALL returned documents after deleting all keys"
+                        "SCAN ALL returned documents after deleting all "
+                        "keys: " + std::to_string(count)
                     );
                 }
             }
-        ));
+        }
 
         std::cout << "\n========================================\n"
                   << "       ALL BENCHMARKS COMPLETED\n"

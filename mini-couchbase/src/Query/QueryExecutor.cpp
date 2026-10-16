@@ -54,6 +54,18 @@ QueryResult QueryExecutor::execute(
 ) const {
     const auto indexes = indexClient.listIndexes();
 
+    std::cout << "Available indexes:\n";
+    for (const auto& index : indexes) {
+        std::cout << "  name=" << index.name
+                << ", field=" << index.field << '\n';
+    }
+
+    std::cout << "Predicate field: " << predicate.field << '\n';
+    std::cout << "Estimated document count: "
+            << estimatedDocumentCount << '\n';
+    std::cout << "Estimated selectivity: "
+            << estimatedSelectivity << '\n';
+
     QueryPlan plan = optimizer.optimize(
         predicate,
         indexes,

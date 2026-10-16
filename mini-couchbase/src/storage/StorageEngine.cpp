@@ -7,6 +7,7 @@
 #include <vector>
 #include <functional>
 #include <unordered_set>
+#include <iostream>
 void StorageEngine::discoverSSTables() {
 
     std::vector<
@@ -253,111 +254,82 @@ StorageEngine::~StorageEngine() {
     cleanupRetiredSSTables();
 }
 
-
 void StorageEngine::rotateMemTable() {
+    auto oldMemTable =
+        std::shared_ptr<MemTable>(std::move(activeMemTable));
 
-    std::unique_ptr<MemTable>
-        oldMemTable =
-            std::move(activeMemTable);
-
-
-    activeMemTable =
-        std::make_unique<MemTable>(
-            memTableMaxEntries
-        );
-
-
-    flushMemTableAsync(
-        std::move(oldMemTable)
+    activeMemTable = std::make_unique<MemTable>(
+        memTableMaxEntries
     );
 
+    // Publish the old MemTable before starting its asynchronous flush.
+    flushingMemTables.push_back(oldMemTable);
+
+    flushMemTableAsync(std::move(oldMemTable));
 
     cleanupFinishedFlushTasks();
 }
-
-
 void StorageEngine::flushMemTableAsync(
-    std::unique_ptr<MemTable> memTable
+    std::shared_ptr<MemTable> memTable
 ) {
-
-    std::size_t tableNumber =
+    const std::size_t tableNumber =
         sstableCounter.fetch_add(1);
 
+    const std::string filePath =
+        dataDirectory + "/sstable_" +
+        std::to_string(tableNumber) + ".db";
 
-    std::string filePath =
-        dataDirectory +
-        "/sstable_" +
-        std::to_string(tableNumber) +
-        ".db";
+    auto task = std::async(
+        std::launch::async,
+        [this, memTable = std::move(memTable),
+         filePath, tableNumber]() {
 
+            const bool success =
+                SSTable::write(*memTable, filePath);
 
-    auto task =
-        std::async(
-            std::launch::async,
-
-            [
-                this,
-                memTable =
-                    std::move(memTable),
-                filePath,
-                tableNumber
-            ]() mutable {
-
-                bool success =
-                    SSTable::write(
-                        *memTable,
-                        filePath
-                    );
-
-
-                if (!success) {
-                    return;
-                }
-
-
-                bool shouldCompact =
-                    false;
-
-
-                {
-                    std::lock_guard<std::mutex>
-                        lock(sstableMutex);
-
-
-                    sstableFiles.push_back(
-                        std::make_shared<SSTableFile>(
-                            filePath,
-                            tableNumber
-                        )
-                    );
-
-
-                    if (
-                        sstableFiles.size() >=
-                        COMPACTION_THRESHOLD
-                    ) {
-
-                        shouldCompact = true;
-                    }
-                }
-
-
-                if (shouldCompact) {
-
-                    requestCompaction();
-                }
+            // Keep the MemTable readable if flushing fails.
+            if (!success) {
+                return;
             }
-        );
 
+            bool shouldCompact = false;
+
+            {
+                std::lock_guard<std::mutex> lock(sstableMutex);
+
+                sstableFiles.push_back(
+                    std::make_shared<SSTableFile>(
+                        filePath, tableNumber
+                    )
+                );
+
+                shouldCompact =
+                    sstableFiles.size() >= COMPACTION_THRESHOLD;
+            }
+
+            // Remove from the flushing list only after registration.
+            {
+                std::lock_guard<std::mutex> lock(storageMutex);
+
+                flushingMemTables.erase(
+                    std::remove(
+                        flushingMemTables.begin(),
+                        flushingMemTables.end(),
+                        memTable
+                    ),
+                    flushingMemTables.end()
+                );
+            }
+
+            if (shouldCompact) {
+                requestCompaction();
+            }
+        }
+    );
 
     {
-        std::lock_guard<std::mutex>
-            lock(flushMutex);
-
-
-        flushTasks.push_back(
-            std::move(task)
-        );
+        std::lock_guard<std::mutex> lock(flushMutex);
+        flushTasks.push_back(std::move(task));
     }
 }
 
@@ -484,79 +456,78 @@ void StorageEngine::put(
     }
 }
 
-
 std::string StorageEngine::get(
     const std::string& key
 ) const {
+    // 1. Check the active and flushing MemTables.
+    {
+        std::lock_guard<std::mutex> lock(storageMutex);
 
-    std::string value =
-        activeMemTable->get(key);
+        std::string value = activeMemTable->get(key);
 
+        if (value == MemTable::TOMBSTONE) {
+            return "";
+        }
 
-    if (
-        value ==
-        MemTable::TOMBSTONE
-    ) {
+        if (!value.empty()) {
+            return value;
+        }
 
-        return "";
+        // Search flushing MemTables from newest to oldest.
+        for (auto it = flushingMemTables.rbegin();
+             it != flushingMemTables.rend(); ++it) {
+            value = (*it)->get(key);
+
+            if (value == MemTable::TOMBSTONE) {
+                return "";
+            }
+
+            if (!value.empty()) {
+                return value;
+            }
+        }
     }
 
-
-    if (!value.empty()) {
-
-        return value;
-    }
-
-
-    std::vector<
-        std::shared_ptr<SSTableFile>
-    > snapshot;
-
+    // 2. Take a snapshot of registered SSTables.
+    std::vector<std::shared_ptr<SSTableFile>> snapshot;
 
     {
-        std::lock_guard<std::mutex>
-            lock(sstableMutex);
-
+        std::lock_guard<std::mutex> lock(sstableMutex);
         snapshot = sstableFiles;
     }
 
-    for (
-    auto it = snapshot.rbegin();
-    it != snapshot.rend();
-    ++it
-) {
+    // 3. Search newer SSTables first.
+    std::sort(
+        snapshot.begin(),
+        snapshot.end(),
+        [](const auto& a, const auto& b) {
+            return a->generation > b->generation;
+        }
+    );
 
-    // Bloom Filter says the key definitely
-    // does not exist in this SSTable.
-    if (
-        !(*it)->bloomFilter.possiblyContains(key)
-    ) {
-        continue;
-    }
+    for (const auto& table : snapshot) {
+        // Bloom filter: skip SSTables that cannot contain the key.
+        if (!table->bloomFilter.possiblyContains(key)) {
+            continue;
+        }
 
-    // Key may exist, so check the index
-    // and directly seek to its position.
-    value =
-        SSTable::readWithIndex(
+        // Use the SSTable index to look up the key.
+        const std::string value = SSTable::readWithIndex(
             key,
-            (*it)->filePath,
-            (*it)->index
+            table->filePath,
+            table->index
         );
 
-    if (
-        value ==
-        MemTable::TOMBSTONE
-    ) {
+        if (value == MemTable::TOMBSTONE) {
+            return "";
+        }
 
-        return "";
+        if (!value.empty()) {
+            return value;
+        }
     }
-
-    if (!value.empty()) {
-
-        return value;
-    }
-}
-
+    std::cerr << "GET MISS: " << key
+          << ", active/flushing and SSTable lookup failed\n";
     return "";
 }
 
@@ -819,6 +790,7 @@ auto newTable =
             std::move(newActiveTables);
 
 
+        
         newActiveTables.push_back(newTable);
 
         std::sort(
@@ -830,6 +802,7 @@ auto newTable =
         );
 
         sstableFiles = std::move(newActiveTables);
+
             }
 }
 

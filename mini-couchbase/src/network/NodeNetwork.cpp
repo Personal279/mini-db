@@ -261,9 +261,17 @@ std::optional<RpcMessage> NodeNetwork::send(
         close(clientSocket);
 #endif
 
-        throw std::runtime_error(
-            "Failed to connect to node"
-        );
+        // An unreachable peer is a normal condition in a cluster.
+        // Callers (Raft replication/election) treat nullopt as
+        // "no response" and retry on their next tick.
+        std::cerr
+            << "send: cannot connect to "
+            << targetHost
+            << ":"
+            << targetPort
+            << std::endl;
+
+        return std::nullopt;
     }
 
     std::string encoded =
@@ -294,9 +302,14 @@ std::optional<RpcMessage> NodeNetwork::send(
             close(clientSocket);
 #endif
 
-            throw std::runtime_error(
-                "Failed to send RPC message"
-            );
+            std::cerr
+                << "send: failed sending to "
+                << targetHost
+                << ":"
+                << targetPort
+                << std::endl;
+
+            return std::nullopt;
         }
 
         totalSent +=
