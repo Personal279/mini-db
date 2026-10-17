@@ -17,4 +17,5 @@ struct RpcMessage {
     int senderId;
     int receiverId;
     std::string payload;
+    int partitionId = -1;
 };

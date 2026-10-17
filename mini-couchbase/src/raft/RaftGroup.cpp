@@ -4,9 +4,11 @@
 
 RaftGroup::RaftGroup(
     int nodeId,
+    int partitionId,
     const std::vector<int>& peerNodeIds
 )
     : nodeId(nodeId),
+      partitionId(partitionId),
       peerNodeIds(peerNodeIds),
       currentTerm(0),
       votedFor(-1),
@@ -28,6 +30,10 @@ RaftGroup::RaftGroup(
 
 int RaftGroup::getNodeId() const {
     return nodeId;
+}
+
+int RaftGroup::getPartitionId() const {
+    return partitionId;
 }
 
 const std::vector<int>& RaftGroup::getPeerNodeIds() const {

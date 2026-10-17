@@ -150,6 +150,9 @@ add_executable(raft_test
     # Node
     src/node/PartitionManager.cpp
 
+    # Router — required by PartitionManager
+    src/router/PartitionRouter.cpp
+
     # Index Client
     src/index/IndexClient.cpp
 
@@ -163,6 +166,52 @@ add_executable(raft_test
     src/storage/StorageEngine.cpp
     src/storage/SSTable.cpp
     src/storage/BloomFilter.cpp
+)
+
+# ============================================================
+# Raft Replication Test
+# ============================================================
+
+add_executable(raft_replication_test
+    tests/raft_replication_test.cpp
+
+    # Network
+    src/network/NodeNetwork.cpp
+    src/network/RpcCodec.cpp
+
+    # Raft
+    src/raft/RaftLog.cpp
+    src/raft/RaftNetwork.cpp
+    src/raft/RaftReplicationManager.cpp
+    src/raft/RaftGroup.cpp
+    src/raft/RequestVote.cpp
+    src/raft/ElectionManager.cpp
+    src/raft/AppendEntries.cpp
+
+    # Node
+    src/node/PartitionManager.cpp
+
+    # Router — required by PartitionManager
+    src/router/PartitionRouter.cpp
+
+    # Index Client
+    src/index/IndexClient.cpp
+
+    # Query
+    src/query/QueryExecutor.cpp
+    src/query/QueryOptimizer.cpp
+
+    # Storage
+    src/storage/MemTable.cpp
+    src/storage/WAL.cpp
+    src/storage/StorageEngine.cpp
+    src/storage/SSTable.cpp
+    src/storage/BloomFilter.cpp
+)
+
+target_include_directories(raft_replication_test PRIVATE
+    "${CMAKE_SOURCE_DIR}/include"
+    "${CMAKE_SOURCE_DIR}/vcpkg/installed/x64-windows/include"
 )
 
 # ============================================================
@@ -189,6 +238,9 @@ add_executable(partition_manager_test
 
     # Node
     src/node/PartitionManager.cpp
+
+    # Router — required by PartitionManager
+    src/router/PartitionRouter.cpp
 
     # Raft
     src/raft/RaftGroup.cpp
@@ -310,6 +362,11 @@ if(WIN32)
         winhttp
     )
 
+    target_link_libraries(raft_replication_test PRIVATE
+        ws2_32
+        winhttp
+    )
+
     target_link_libraries(partition_manager_test PRIVATE
         ws2_32
         winhttp
@@ -367,6 +424,11 @@ add_test(
 add_test(
     NAME RoutingService_test
     COMMAND $<TARGET_FILE:RoutingService_test>
+)
+
+add_test(
+    NAME raft_replication_test
+    COMMAND $<TARGET_FILE:raft_replication_test>
 )
 
 # network_test and raft_test are intentionally not registered here

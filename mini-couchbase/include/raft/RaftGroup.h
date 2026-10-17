@@ -16,11 +16,12 @@ class RaftGroup {
 public:
     RaftGroup(
         int nodeId,
+        int partitionId,
         const std::vector<int>& peerNodeIds
     );
 
     int getNodeId() const;
-
+    int getPartitionId() const;
     const std::vector<int>& getPeerNodeIds() const;
 
     int getCurrentTerm() const;
@@ -67,6 +68,7 @@ public:
 
 private:
     int nodeId;
+    int partitionId;  // Add this line
 
     std::vector<int> peerNodeIds;
 

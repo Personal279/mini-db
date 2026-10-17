@@ -2,50 +2,47 @@
 
 #include <sstream>
 #include <stdexcept>
-
-std::string RpcCodec::encode(
-    const RpcMessage& message
-) {
+std::string RpcCodec::encode(const RpcMessage& message) {
     return
         typeToString(message.type) + "|" +
         std::to_string(message.senderId) + "|" +
         std::to_string(message.receiverId) + "|" +
+        std::to_string(message.partitionId) + "|" +
         message.payload +
         "\n";
 }
 
-RpcMessage RpcCodec::decode(
-    const std::string& data
-) {
+RpcMessage RpcCodec::decode(const std::string& data) {
     std::stringstream stream(data);
 
     std::string type;
     std::string senderId;
     std::string receiverId;
+    std::string partitionId;
     std::string payload;
 
     std::getline(stream, type, '|');
     std::getline(stream, senderId, '|');
     std::getline(stream, receiverId, '|');
+    std::getline(stream, partitionId, '|');
     std::getline(stream, payload);
 
-    if (
-        type.empty() ||
+    if (type.empty() ||
         senderId.empty() ||
-        receiverId.empty()
-    ) {
-        throw std::runtime_error(
-            "Invalid RPC message"
-        );
+        receiverId.empty() ||
+        partitionId.empty()) {
+        throw std::runtime_error("Invalid RPC message");
     }
 
     return {
         stringToType(type),
         std::stoi(senderId),
         std::stoi(receiverId),
-        payload
+        payload,
+        std::stoi(partitionId)
     };
 }
+
 
 std::string RpcCodec::typeToString(
     RpcType type

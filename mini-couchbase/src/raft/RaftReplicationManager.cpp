@@ -264,6 +264,7 @@ void RaftReplicationManager::applyCommittedEntries() {
         }
 
         partitionManager.applyCommand(
+            group.getPartitionId(),
             entry->command
         );
 
