@@ -1,3 +1,4 @@
+
 #include "raft/ElectionManager.h"
 
 #include <chrono>
@@ -6,6 +7,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "raft/RaftNetwork.h"
 
@@ -15,6 +17,7 @@ ElectionManager::ElectionManager(
 )
     : group(group),
       network(network),
+      leaderChangeCallback(nullptr),
       votesReceived(0),
       electionTimerRunning(false),
       lastHeartbeatTime(getCurrentTimeMs()) {
@@ -28,6 +31,12 @@ ElectionManager::ElectionManager(
 
 ElectionManager::~ElectionManager() {
     stopElectionTimer();
+}
+
+void ElectionManager::setLeaderChangeCallback(
+    std::function<void(int partitionId, int nodeId)> callback
+) {
+    leaderChangeCallback = std::move(callback);
 }
 
 RequestVoteRequest
@@ -73,38 +82,38 @@ bool ElectionManager::requestVotes() {
         return false;
     }
 
-    RequestVoteRequest request =
-        createRequest();
+    RequestVoteRequest request = createRequest();
 
     for (
         int peerId :
         group.getPeerNodeIds()
     ) {
 
-        std::string host =
-            "127.0.0.1";
+        std::string host = "127.0.0.1";
+        int port = 9001 + peerId;
 
-        int port =
-            9001 + peerId;
-
-        std::optional<RequestVoteResponse>
-            response =
-                network.sendRequestVote(
-                    host,
-                    port,
-                    request
-                );
+        std::optional<RequestVoteResponse> response =
+            network.sendRequestVote(
+                host,
+                port,
+                request
+            );
 
         if (!response.has_value()) {
             continue;
         }
 
-        if (
-            processVote(
-                response.value()
-            )
-        ) {
+        if (processVote(response.value())) {
             return true;
+        }
+
+        // Stop requesting votes if this node is no longer
+        // a candidate, for example after learning a higher term.
+        if (
+            group.getRole() !=
+            RaftRole::CANDIDATE
+        ) {
+            return false;
         }
     }
 
@@ -120,12 +129,9 @@ bool ElectionManager::processVote(
         group.getCurrentTerm()
     ) {
 
-        group.becomeFollower(
-            response.term
-        );
+        group.becomeFollower(response.term);
 
         votesReceived = 0;
-
         resetElectionTimer();
 
         return false;
@@ -155,17 +161,25 @@ bool ElectionManager::processVote(
         << "Node "
         << group.getNodeId()
         << " received vote. Votes: "
-        << votesReceived
+        << votesReceived.load()
         << "/"
         << getMajority()
         << std::endl;
 
     if (
-        votesReceived >=
+        votesReceived.load() >=
         getMajority()
     ) {
 
         group.becomeLeader();
+
+        // Publish the elected leader to cluster metadata.
+        if (leaderChangeCallback) {
+            leaderChangeCallback(
+                group.getPartitionId(),
+                group.getNodeId()
+            );
+        }
 
         resetElectionTimer();
 
@@ -190,39 +204,31 @@ int ElectionManager::getVotesReceived() const {
 
 int ElectionManager::getMajority() const {
 
-    int clusterSize =
+    const int clusterSize =
         static_cast<int>(
             group.getPeerNodeIds().size()
         ) + 1;
 
-    return (
-        clusterSize / 2
-    ) + 1;
+    return (clusterSize / 2) + 1;
 }
 
 void ElectionManager::resetElectionTimer() {
-
-    lastHeartbeatTime =
-        getCurrentTimeMs();
+    lastHeartbeatTime = getCurrentTimeMs();
 }
 
 void ElectionManager::startElectionTimer() {
 
-    if (
-        electionTimerRunning.load()
-    ) {
+    if (electionTimerRunning.load()) {
         return;
     }
 
     electionTimerRunning = true;
-
     resetElectionTimer();
 
-    electionTimerThread =
-        std::thread(
-            &ElectionManager::electionTimerLoop,
-            this
-        );
+    electionTimerThread = std::thread(
+        &ElectionManager::electionTimerLoop,
+        this
+    );
 }
 
 void ElectionManager::stopElectionTimer() {
@@ -234,19 +240,15 @@ void ElectionManager::stopElectionTimer() {
         electionTimerThread.get_id() !=
             std::this_thread::get_id()
     ) {
-
         electionTimerThread.join();
     }
 }
 
 void ElectionManager::electionTimerLoop() {
 
-    int electionTimeout =
-        getElectionTimeoutMs();
+    int electionTimeout = getElectionTimeoutMs();
 
-    while (
-        electionTimerRunning.load()
-    ) {
+    while (electionTimerRunning.load()) {
 
         if (
             group.getRole() ==
@@ -262,25 +264,17 @@ void ElectionManager::electionTimerLoop() {
             continue;
         }
 
-        long long now =
-            getCurrentTimeMs();
+        const long long now = getCurrentTimeMs();
 
-        long long elapsed =
-            now -
-            lastHeartbeatTime.load();
+        const long long elapsed =
+            now - lastHeartbeatTime.load();
 
-        if (
-            elapsed >=
-            electionTimeout
-        ) {
+        if (elapsed >= electionTimeout) {
 
             startElection();
-
             requestVotes();
 
-            electionTimeout =
-                getElectionTimeoutMs();
-
+            electionTimeout = getElectionTimeoutMs();
             resetElectionTimer();
         }
 
@@ -304,32 +298,21 @@ void ElectionManager::sendHeartbeats() {
         group.getPeerNodeIds()
     ) {
 
-        std::string host =
-            "127.0.0.1";
+        const std::string host = "127.0.0.1";
+        const int port = 9001 + peerId;
 
-        int port =
-            9001 + peerId;
-
-        int prevLogIndex =
+        const int prevLogIndex =
             group.getNextIndex(peerId) - 1;
 
         int prevLogTerm = 0;
 
-        if (
-            prevLogIndex > 0
-        ) {
+        if (prevLogIndex > 0) {
 
             const LogEntry* previousEntry =
-                group.getLog().get(
-                    prevLogIndex
-                );
+                group.getLog().get(prevLogIndex);
 
-            if (
-                previousEntry != nullptr
-            ) {
-
-                prevLogTerm =
-                    previousEntry->term;
+            if (previousEntry != nullptr) {
+                prevLogTerm = previousEntry->term;
             }
         }
 
@@ -342,24 +325,19 @@ void ElectionManager::sendHeartbeats() {
             group.getCommitIndex()
         };
 
-        std::optional<AppendEntriesResponse>
-            response =
-                network.sendAppendEntries(
-                    host,
-                    port,
-                    request
-                );
+        std::optional<AppendEntriesResponse> response =
+            network.sendAppendEntries(
+                host,
+                port,
+                request
+            );
 
         if (
             response.has_value() &&
-            response->term >
-                group.getCurrentTerm()
+            response->term > group.getCurrentTerm()
         ) {
 
-            group.becomeFollower(
-                response->term
-            );
-
+            group.becomeFollower(response->term);
             resetElectionTimer();
 
             return;
@@ -385,13 +363,12 @@ ElectionManager::getElectionTimeoutMs() const {
         std::random_device{}()
     );
 
-    std::uniform_int_distribution<int>
-        distribution(
-            1500,
-            3000
-        );
-
-    return distribution(
-        generator
+    std::uniform_int_distribution<int> distribution(
+        1500,
+        3000
     );
+
+    return distribution(generator);
 }
+
+

@@ -1,57 +1,101 @@
+
 #include "node/PartitionManager.h"
 
 #include <chrono>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <thread>
 
 PartitionManager::PartitionManager(
     StorageEngine& storageEngine,
-    RaftGroup& raftGroup
+    const PartitionRouter& partitionRouter
 )
     : storageEngine(storageEngine),
-      raftGroup(raftGroup),
+      partitionRouter(partitionRouter),
       indexClient() {
 }
 
-void PartitionManager::addPartition(int partitionId) {
-    partitions.push_back(partitionId);
+void PartitionManager::addPartition(
+    int partitionId,
+    RaftGroup& raftGroup
+) {
+    if (raftGroup.getPartitionId() != partitionId) {
+        throw std::invalid_argument(
+            "Raft group partition ID does not match registration"
+        );
+    }
+
+    auto [it, inserted] = raftGroups.emplace(
+        partitionId,
+        &raftGroup
+    );
+
+    if (!inserted) {
+        throw std::invalid_argument(
+            "Partition already registered"
+        );
+    }
 }
 
 bool PartitionManager::ownsPartition(int partitionId) const {
-    for (int id : partitions) {
-        if (id == partitionId) {
-            return true;
-        }
-    }
-    return false;
+    return raftGroups.find(partitionId) != raftGroups.end();
 }
 
-Response PartitionManager::processRequest(const Request& request) {
+RaftGroup& PartitionManager::getRaftGroup(int partitionId) {
+    auto it = raftGroups.find(partitionId);
+
+    if (it == raftGroups.end()) {
+        throw std::out_of_range(
+            "No local Raft group for partition"
+        );
+    }
+
+    return *it->second;
+}
+
+int PartitionManager::findPartition(
+    const std::string& key
+) const {
+    return partitionRouter.findPartition(key);
+}
+
+Response PartitionManager::processRequest(
+    const Request& request
+) {
+    const int partitionId = findPartition(request.key);
+
+    if (!ownsPartition(partitionId)) {
+        return {
+            false, false, "",
+            "This node is not a replica of the partition"
+        };
+    }
+
+    RaftGroup& raftGroup = getRaftGroup(partitionId);
+
     switch (request.operation) {
         case Operation::PUT:
         case Operation::DELETE: {
             if (raftGroup.getRole() != RaftRole::LEADER) {
-                std::cout
-                    << "Request rejected: this node is not the Raft leader"
-                    << std::endl;
-
                 return {false, false, "", "Not leader"};
             }
 
-            int index = appendWriteCommand(request);
+            const int index = appendWriteCommand(
+                raftGroup,
+                request
+            );
 
-            // Do not acknowledge until the entry is committed AND applied,
-            // so a following GET sees it. lastApplied is only advanced after
-            // applyCommand() has finished.
             const auto deadline =
-                std::chrono::steady_clock::now() +
-                std::chrono::seconds(2);
+                std::chrono::steady_clock::now()
+                + std::chrono::seconds(2);
 
             while (raftGroup.getLastApplied() < index) {
                 if (raftGroup.getRole() != RaftRole::LEADER) {
-                    return {false, false, "",
-                            "Leadership lost before commit"};
+                    return {
+                        false, false, "",
+                        "Leadership lost before commit"
+                    };
                 }
 
                 if (std::chrono::steady_clock::now() >= deadline) {
@@ -67,16 +111,12 @@ Response PartitionManager::processRequest(const Request& request) {
         }
 
         case Operation::GET: {
-            // Serve reads from the leader only. A follower learns the commit
-            // index one heartbeat late, so it can return an empty/stale value
-            // right after the leader acknowledged a PUT.
             if (raftGroup.getRole() != RaftRole::LEADER) {
                 return {false, false, "", "Not leader"};
             }
 
-            std::string value = storageEngine.get(request.key);
-
-            std::cout << "GET result: " << value << std::endl;
+            const std::string value =
+                storageEngine.get(request.key);
 
             return {true, true, value, "OK"};
         }
@@ -85,26 +125,27 @@ Response PartitionManager::processRequest(const Request& request) {
     return {false, false, "", "Unknown operation"};
 }
 
-int PartitionManager::appendWriteCommand(const Request& request) {
-    std::string operation;
+int PartitionManager::appendWriteCommand(
+    RaftGroup& raftGroup,
+    const Request& request
+) {
+    const std::string operation =
+        request.operation == Operation::PUT
+        ? "PUT"
+        : "DELETE";
 
-    if (request.operation == Operation::PUT) {
-        operation = "PUT";
-    } else {
-        operation = "DELETE";
-    }
-
-    std::string command =
+    const std::string command =
         operation + "|" + request.key + "|" + request.value;
 
-    int index = raftGroup.getLog().getLastIndex() + 1;
-    int term = raftGroup.getCurrentTerm();
+    const int index = raftGroup.getLog().getLastIndex() + 1;
+    const int term = raftGroup.getCurrentTerm();
 
     LogEntry entry{term, index, command};
-
     raftGroup.getLog().append(entry);
 
-    std::cout << "Raft log appended: " << command
+    std::cout << "Raft log appended for partition "
+              << raftGroup.getPartitionId()
+              << ": " << command
               << " [term=" << term
               << ", index=" << index << "]"
               << std::endl;
@@ -112,7 +153,17 @@ int PartitionManager::appendWriteCommand(const Request& request) {
     return index;
 }
 
-void PartitionManager::applyCommand(const std::string& command) {
+void PartitionManager::applyCommand(
+    int partitionId,
+    const std::string& command
+) {
+    // Reject commands for partitions not hosted by this node.
+    if (!ownsPartition(partitionId)) {
+        throw std::out_of_range(
+            "Cannot apply command for unowned partition"
+        );
+    }
+
     std::stringstream stream(command);
 
     std::string operation;
@@ -123,70 +174,26 @@ void PartitionManager::applyCommand(const std::string& command) {
     std::getline(stream, key, '|');
     std::getline(stream, value);
 
-    Request request;
-
     if (operation == "PUT") {
-        request.operation = Operation::PUT;
+        storageEngine.put(key, value);
+
+        try {
+            indexClient.upsertDocument(key, value);
+        } catch (const std::exception& e) {
+            std::cerr << "Index synchronization failed: "
+                      << e.what() << std::endl;
+        }
     } else if (operation == "DELETE") {
-        request.operation = Operation::DELETE;
-    } else {
-        return;
-    }
+        storageEngine.remove(key);
 
-    request.key = key;
-    request.value = value;
-
-    switch (request.operation) {
-        case Operation::PUT:
-            storageEngine.put(request.key, request.value);
-
-            try {
-                indexClient.upsertDocument(
-                    request.key,
-                    request.value
-                );
-
-                std::cout
-                    << "Index synchronized for PUT: "
-                    << request.key << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr
-                    << "Index synchronization failed for PUT "
-                    << request.key << ": "
-                    << e.what() << std::endl;
-            }
-
-            std::cout
-                << "Committed PUT applied: "
-                << request.key << std::endl;
-            break;
-
-        case Operation::DELETE:
-            storageEngine.remove(request.key);
-
-            try {
-                indexClient.deleteDocument(request.key);
-
-                std::cout
-                    << "Index synchronized for DELETE: "
-                    << request.key << std::endl;
-            } catch (const std::exception& e) {
-                std::cerr
-                    << "Index synchronization failed for DELETE "
-                    << request.key << ": "
-                    << e.what() << std::endl;
-            }
-
-            std::cout
-                << "Committed DELETE applied: "
-                << request.key << std::endl;
-            break;
-
-        case Operation::GET:
-            break;
+        try {
+            indexClient.deleteDocument(key);
+        } catch (const std::exception& e) {
+            std::cerr << "Index synchronization failed: "
+                      << e.what() << std::endl;
+        }
     }
 }
-
 
 
 QueryResult PartitionManager::executeQuery(

@@ -1,6 +1,8 @@
+
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <thread>
 
 #include "raft/RaftGroup.h"
@@ -37,9 +39,15 @@ public:
 
     void stopElectionTimer();
 
+    // Called when this node successfully becomes leader.
+    void setLeaderChangeCallback(
+        std::function<void(int partitionId, int nodeId)> callback
+    );
+
 private:
     RaftGroup& group;
     RaftNetwork& network;
+    std::function<void(int, int)> leaderChangeCallback;
 
     std::atomic<int> votesReceived;
     std::atomic<bool> electionTimerRunning;

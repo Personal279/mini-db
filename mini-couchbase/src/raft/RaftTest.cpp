@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
 
     RaftGroup group(
         nodeId,
+        0,
         peers
     );
 
